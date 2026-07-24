@@ -1,0 +1,49 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.4.11626.88
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZYRAHRM.IntegrationApp", "ZYRAHRM.IntegrationApp.csproj", "{12EB1D27-1CF5-4759-B2FE-2DE191F12412}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZyraHangfireService", "..\ZyraHangfireService\ZyraHangfireService.csproj", "{FD7F9246-80C6-48E3-AA19-8E5EBB0C23FE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zyra.LantimeServiceApp", "..\Zyra.LantimeServiceApp\Zyra.LantimeServiceApp.csproj", "{AFFF5564-BD13-49DA-B26D-2AA6C5A7A77C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZYRA.Attendance.Infrastructure", "..\ZYRA.Attendance.Infrastructure\ZYRA.Attendance.Infrastructure.csproj", "{1E6E3642-1775-4DAF-9164-0C1EE1EFC902}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZyraHangfireModels", "..\ZyraHangfireModels\ZyraHangfireModels.csproj", "{3FD7F0FD-B550-48A8-8DEF-3003E87D3CD9}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{12EB1D27-1CF5-4759-B2FE-2DE191F12412}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{12EB1D27-1CF5-4759-B2FE-2DE191F12412}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{12EB1D27-1CF5-4759-B2FE-2DE191F12412}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{12EB1D27-1CF5-4759-B2FE-2DE191F12412}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FD7F9246-80C6-48E3-AA19-8E5EBB0C23FE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FD7F9246-80C6-48E3-AA19-8E5EBB0C23FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FD7F9246-80C6-48E3-AA19-8E5EBB0C23FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FD7F9246-80C6-48E3-AA19-8E5EBB0C23FE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AFFF5564-BD13-49DA-B26D-2AA6C5A7A77C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AFFF5564-BD13-49DA-B26D-2AA6C5A7A77C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AFFF5564-BD13-49DA-B26D-2AA6C5A7A77C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AFFF5564-BD13-49DA-B26D-2AA6C5A7A77C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1E6E3642-1775-4DAF-9164-0C1EE1EFC902}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1E6E3642-1775-4DAF-9164-0C1EE1EFC902}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1E6E3642-1775-4DAF-9164-0C1EE1EFC902}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1E6E3642-1775-4DAF-9164-0C1EE1EFC902}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3FD7F0FD-B550-48A8-8DEF-3003E87D3CD9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3FD7F0FD-B550-48A8-8DEF-3003E87D3CD9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3FD7F0FD-B550-48A8-8DEF-3003E87D3CD9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3FD7F0FD-B550-48A8-8DEF-3003E87D3CD9}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3A2A4448-DA3B-43BF-B47F-063CE1D29175}
+	EndGlobalSection
+EndGlobal
