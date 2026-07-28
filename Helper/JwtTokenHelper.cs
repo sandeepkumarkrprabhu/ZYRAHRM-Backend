@@ -1,5 +1,4 @@
 ﻿using Microsoft.IdentityModel.Tokens;
-using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -12,7 +11,7 @@ namespace ZYRAHRM.IntegrationApp.Helper
     public static class JwtTokenHelper
     {
         // Ideally move these to appsettings.json
-        private static readonly string SecretKey = "your_super_secret_key_here";
+        private static readonly string SecretKey = "PumexBiometricZyraINTRA_Pumex#@12345!_2026";
         private static readonly string Issuer = "ZYRAHRM";
         private static readonly string Audience = "ZYRAHRMUsers";
 
