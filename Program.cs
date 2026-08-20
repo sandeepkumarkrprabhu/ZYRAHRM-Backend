@@ -2,6 +2,9 @@
 using Hangfire.Console;
 using Hangfire.SqlServer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.JobService;
 using Zyra.LantimeServiceApp.Models;
@@ -13,17 +16,40 @@ using ZYRAHRM.IntegrationApp.HangfireService;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddHangfire(config =>
-    config
-        .UseSqlServerStorage(
-            builder.Configuration.GetConnectionString("DefaultConnection"),
-            new SqlServerStorageOptions
-            {
-                JobExpirationCheckInterval = TimeSpan.FromDays(1)
-            })
-        .WithJobExpirationTimeout(TimeSpan.FromDays(90))
-        .UseConsole()
-);
+//Commented for testing the APIs 2907026
+//builder.Services.AddHangfire(config =>
+//    config
+//        .UseSqlServerStorage(
+//            builder.Configuration.GetConnectionString("DefaultConnection"),
+//            new SqlServerStorageOptions
+//            {
+//                JobExpirationCheckInterval = TimeSpan.FromDays(1)
+//            })
+//        .WithJobExpirationTimeout(TimeSpan.FromDays(90))
+//        .UseConsole()
+//);
+
+// 🔑 JWT Authentication setup
+var jwtKey = builder.Configuration["Jwt:Key"];
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = false, // set true if you want audience validation
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = jwtIssuer,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+    };
+});
 
 builder.Services.Configure<ZyraIntegrationCredentials>(
     builder.Configuration.GetSection("ZyraIntegrationCredentials"));
@@ -47,8 +73,7 @@ builder.Services.AddDbContext<AttendanceDbContext>(options =>
         b => b.MigrationsAssembly("ZYRA.Attendance.Infrastructure")
     ));
 
-
-builder.Services.AddHangfireServer();
+//builder.Services.AddHangfireServer();
 
 builder.Services.AddScoped<IDbService, DbService>();
 builder.Services.AddScoped<ISessionService, SessionService>();
@@ -61,7 +86,7 @@ builder.Services.AddScoped<IAttendancePolicy, AttendancePolicy>();
 builder.Services.AddScoped<IAttendanceProcessor, AttendanceProcessor>();
 builder.Services.AddScoped<IAttendanceDbService, AttendanceDbService>();
 builder.Services.AddScoped<IAttendanceLogService, AttendanceLogService>();
-builder.Services.AddScoped<IEmployeeSyncProcessor,  EmployeeSyncProcessor>();
+builder.Services.AddScoped<IEmployeeSyncProcessor, EmployeeSyncProcessor>();
 builder.Services.AddScoped<IEmployeePunchProcessor, EmployeePunchProcessor>();
 
 builder.Services.AddScoped<ISyncAttendanceJob, JobSyncAttendanceJob>();
@@ -69,20 +94,20 @@ builder.Services.AddScoped<IAutoCheckoutJob, JobAutoCheckoutJob>();
 builder.Services.AddScoped<IDirectorAttendanceJob, JobDirectorAttendance>();
 builder.Services.AddScoped<IEmployeeSyncJob, JobEmployeeMasterSync>();
 builder.Services.AddScoped<IEmployeePunchSyncJob, JobEmployeeBioPunchTimeUpdate>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+
 
 //builder.Services.AddScoped<AttendanceJobService>();
 //builder.Services.AddScoped<UserEmployeeService>();
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowFrontend",
-        policy =>
-        {
-            policy
-                .AllowAnyOrigin()
-                .AllowAnyHeader()
-                .AllowAnyMethod();
-        });
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
 });
 
 // Logging services 
@@ -94,7 +119,6 @@ builder.Logging.AddDebug();
 builder.Services.AddControllers();
 builder.Services.AddHttpClient();
 builder.Services.AddMemoryCache();
-
 
 // ✅ ADD SWAGGER SERVICES
 builder.Services.AddEndpointsApiExplorer();
@@ -121,9 +145,13 @@ using (var scope = app.Services.CreateScope())
 
 // Configure the HTTP request pipeline.
 
+app.UseCors("AllowFrontend");
+
 app.UseHttpsRedirection();
 
-app.UseCors("AllowFrontend");
+// 🔑 Enable Authentication & Authorization
+app.UseAuthentication();
+app.UseAuthorization();
 
 // ENABLE SWAGGER MIDDLEWARE
 app.UseSwagger(c =>
@@ -140,10 +168,11 @@ app.UseSwaggerUI(c =>
     c.RoutePrefix = "swagger"; // open at /swagger
 });
 
-app.UseHangfireDashboard("/hangfire", new DashboardOptions
-{
-    Authorization = new[] { new AllowAllDashboardAuthorizationFilter() }
-});
+//Commented for testing the APIs 2907026
+//app.UseHangfireDashboard("/hangfire", new DashboardOptions
+//{
+//    Authorization = new[] { new AllowAllDashboardAuthorizationFilter() }
+//});
 
 app.MapControllers();
 
@@ -151,8 +180,9 @@ app.MapControllers();
 
 var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
 
+//Commented for testing the APIs 2907026
 // Register all Hangfire jobs in one place
-HangfireJobRegistration.Register(app.Services, istZone);
+//HangfireJobRegistration.Register(app.Services, istZone);
 
 app.MapGet("/", () => "Hangfire Service is running...");
 

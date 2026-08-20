@@ -43,9 +43,12 @@ namespace ZYRAHRM.IntegrationApp.Controllers
             }
         }
 
+        // PUT: api/Employee/2
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(int id, [FromBody] EmployeeMapping updatedEmployee)
         {
+            _logger.LogInformation("Update request received for Employee ID {Id}", id);
+
             try
             {
                 if (updatedEmployee == null)
@@ -57,27 +60,29 @@ namespace ZYRAHRM.IntegrationApp.Controllers
                 if (id != updatedEmployee.Id)
                 {
                     _logger.LogWarning("Update failed: ID mismatch. Route ID: {RouteId}, Body ID: {BodyId}", id, updatedEmployee.Id);
-                    return BadRequest("Employee ID mismatch.");
+                    return BadRequest($"Employee ID mismatch. Route ID: {id}, Body ID: {updatedEmployee.Id}");
                 }
 
-                var existingEmployee = await _dbContext.EmployeeMappings
-                                                       .FirstOrDefaultAsync(e => e.Id == id);
+                var existingEmployee = await _dbContext.EmployeeMappings.FirstOrDefaultAsync(e => e.Id == id);
 
                 if (existingEmployee == null)
                 {
-                    _logger.LogWarning("Employee with ID {Id} not found.", id);
+                    _logger.LogWarning("Update failed: Employee with ID {Id} not found.", id);
                     return NotFound($"Employee with ID {id} not found.");
                 }
 
-                // Update fields (map only what is needed)
-                existingEmployee.HRMEmployeeCode = updatedEmployee.HRMEmployeeCode;
+                // Trace before updating
+                _logger.LogInformation("Updating Employee {Id}: OldName={OldName}, NewName={NewName}",
+                    id, existingEmployee.EmployeeName, updatedEmployee.EmployeeName);
+
+                // Update fields
                 existingEmployee.EmployeeName = updatedEmployee.EmployeeName;
-                //existingEmployee.BiometricUserId = updatedEmployee.BiometricUserId;
+                existingEmployee.HRMEmployeeCode = updatedEmployee.HRMEmployeeCode;
                 existingEmployee.IsActive = updatedEmployee.IsActive;
                 existingEmployee.IsExcludeFromBiometric = updatedEmployee.IsExcludeFromBiometric;
                 existingEmployee.IsCheckoutFinalOverriddenByHR = updatedEmployee.IsCheckoutFinalOverriddenByHR;
                 existingEmployee.LastCheckoutFinal = updatedEmployee.LastCheckoutFinal;
-                existingEmployee.UpdatedDateTime = DateTime.Now;    
+                existingEmployee.UpdatedDateTime = DateTime.Now;
 
                 await _dbContext.SaveChangesAsync();
 
@@ -85,11 +90,17 @@ namespace ZYRAHRM.IntegrationApp.Controllers
 
                 return Ok(existingEmployee);
             }
+            catch (DbUpdateException dbEx)
+            {
+                _logger.LogError(dbEx, "Database update error while updating employee {Id}", id);
+                return StatusCode(500, "Database update error occurred.");
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while updating employee with ID {Id}", id);
+                _logger.LogError(ex, "Unexpected error occurred while updating employee {Id}", id);
                 return StatusCode(500, "Internal server error");
             }
         }
+
     }
 }

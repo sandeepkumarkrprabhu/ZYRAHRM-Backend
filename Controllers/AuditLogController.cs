@@ -19,7 +19,7 @@ namespace ZYRAHRM.IntegrationApp.Controllers
         }
     
 
-    //  EXISTING - GET all holidays
+    //  EXISTING - GET all Audit Log
         [HttpGet]
         public async Task<IActionResult> Get()
         {

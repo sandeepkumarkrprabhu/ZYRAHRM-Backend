@@ -1,5 +1,6 @@
 ﻿namespace ZYRAHRM.IntegrationApp.Helper
 {
+    using MimeKit;
     using System.Security.Cryptography;
     using System.Text;
 
@@ -25,6 +26,8 @@
                 return storedHash.SequenceEqual(computedHash);
             }
         }
+
+        
     }
 
 }

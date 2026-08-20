@@ -1,6 +1,9 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using ZYRA.Attendance.Infrastructure;
+using ZyraHangfireModels.PresentationModels;
 using ZYRAHRM.IntegrationApp.Helper;
 
 namespace ZYRAHRM.IntegrationApp.Controllers
@@ -45,35 +48,30 @@ namespace ZYRAHRM.IntegrationApp.Controllers
         }
 
         // GET: api/auth/me
+        [Authorize]
         [HttpGet("me")]
         public async Task<IActionResult> Me()
         {
-            var username = User.Identity?.Name;
-            if (string.IsNullOrEmpty(username))
+            var email = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
+            if (string.IsNullOrEmpty(email))
                 return Unauthorized(new { message = "Not authenticated" });
 
-            var user = await _dbContext.Users
-                .FirstOrDefaultAsync(u => u.Email == username);
-
+            var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == email);
             if (user == null)
                 return NotFound(new { message = "User not found" });
 
             return Ok(new
             {
-                user.Id,
-                user.FullName,
-                user.Email,
-                user.IsLocked,
-                user.Status,
-                user.RoleName
+                Id = user.Id,
+                FullName = user.FullName,
+                Email = user.Email,
+                IsLocked = user.IsLocked,
+                Status = user.Status,
+                RoleName = user.RoleName
             });
         }
+
     }
 
-    // DTOs
-    public class LoginRequest
-    {
-        public string Username { get; set; }
-        public string Password { get; set; }
-    }
+
 }

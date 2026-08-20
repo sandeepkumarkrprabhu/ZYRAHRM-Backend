@@ -1,9 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using NETCore.MailKit.Core;
 using ZYRA.Attendance.Infrastructure;
 using ZyraHangfireModels.Models;
-using Microsoft.EntityFrameworkCore;
-using System.Security.Cryptography;
-using System.Text;
+using ZYRAHRM.IntegrationApp.Helper;
 
 namespace ZYRAHRM.IntegrationApp.Controllers
 {
@@ -13,11 +13,15 @@ namespace ZYRAHRM.IntegrationApp.Controllers
     {
         private readonly AttendanceDbContext _dbContext;
         private readonly ILogger<UsersController> _logger;
+        private readonly EmailService _emailService;
+        private readonly IConfiguration _configuration;
 
-        public UsersController(AttendanceDbContext dbContext, ILogger<UsersController> logger)
+        public UsersController(AttendanceDbContext dbContext, ILogger<UsersController> logger, EmailService emailService, IConfiguration configuration)
         {
             _dbContext = dbContext;
             _logger = logger;
+            _emailService = emailService;
+            _configuration = configuration;
         }
 
         // GET all users
@@ -76,7 +80,7 @@ namespace ZYRAHRM.IntegrationApp.Controllers
                 var plainPassword = newUser.PasswordHash;
 
                 // Hash + Salt
-                CreatePasswordHash(plainPassword, out byte[] passwordHash, out byte[] passwordSalt);
+                PasswordHelper.CreatePasswordHash(plainPassword, out byte[] passwordHash, out byte[] passwordSalt);
                 newUser.PasswordHash = Convert.ToBase64String(passwordHash);
                 newUser.PasswordSalt = Convert.ToBase64String(passwordSalt);
 
@@ -85,13 +89,22 @@ namespace ZYRAHRM.IntegrationApp.Controllers
                 newUser.Status = true;
                 newUser.FailedLoginAttempts = 0;
                 newUser.IsLocked = false;
+                newUser.RoleName = newUser.RoleName;
                 newUser.IsPasswordResetRequired = true; // force reset on first login
 
                 await _dbContext.Users.AddAsync(newUser);
                 await _dbContext.SaveChangesAsync();
 
-                // Send email with plain password
-                //await SendPasswordEmail(newUser.Email, plainPassword);
+                // Send plain-text email with credentials
+                //try
+                //{
+                //    await _emailService.SendAsync(newUser.Email, newUser.FullName, plainPassword);
+                //}
+                //catch (Exception ex)
+                //{
+                //    _logger.LogError(ex, "Failed to send password email to {Email}.", newUser.Email);
+                //    // Decide: you can still return Created or return 500 depending on policy
+                //}
 
                 _logger.LogInformation("User created successfully with ID {Id}.", newUser.Id);
                 return CreatedAtAction(nameof(GetById), new { id = newUser.Id }, newUser);
@@ -103,29 +116,5 @@ namespace ZYRAHRM.IntegrationApp.Controllers
             }
         }
 
-
-        // Helper for password hashing
-        private void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordSalt)
-        {
-            using (var hmac = new HMACSHA512())
-            {
-                passwordSalt = hmac.Key;
-                passwordHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(password));
-            }
-        }
-
-        //Helper for random password generation
-        private string GenerateRandomPassword(int length = 12)
-        {
-            const string validChars = "ABCDEFGHJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*?";
-            var randomBytes = new byte[length];
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                rng.GetBytes(randomBytes);
-            }
-
-            var chars = randomBytes.Select(b => validChars[b % validChars.Length]);
-            return new string(chars.ToArray());
-        }
     }
 }

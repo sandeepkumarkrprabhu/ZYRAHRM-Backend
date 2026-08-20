@@ -6,11 +6,9 @@ using ZyraHangfireModels.Models;
 
 namespace ZYRAHRM.IntegrationApp.Helper
 {
-    
-
     public static class JwtTokenHelper
     {
-        // Ideally move these to appsettings.json
+        // Move these to appsettings.json ideally
         private static readonly string SecretKey = "PumexBiometricZyraINTRA_Pumex#@12345!_2026";
         private static readonly string Issuer = "ZYRAHRM";
         private static readonly string Audience = "ZYRAHRMUsers";
@@ -22,13 +20,13 @@ namespace ZYRAHRM.IntegrationApp.Helper
 
             var claims = new[]
             {
-            new Claim(JwtRegisteredClaimNames.Sub, user.FullName),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new Claim(ClaimTypes.Name, user.FullName),
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Email, user.Email ?? string.Empty),
-            new Claim(ClaimTypes.Role, user.RoleName ?? "User")
-        };
+                new Claim(JwtRegisteredClaimNames.Sub, user.FullName ?? string.Empty),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Name, user.FullName ?? string.Empty),
+                new Claim(ClaimTypes.Email, user.Email ?? string.Empty),
+                new Claim(ClaimTypes.Role, user.RoleName ?? "User")
+            };
 
             var token = new JwtSecurityToken(
                 issuer: Issuer,
@@ -41,5 +39,4 @@ namespace ZYRAHRM.IntegrationApp.Helper
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
     }
-
 }
