@@ -1,6 +1,6 @@
 ﻿namespace ZYRAHRM.IntegrationApp.Helper
 {
-    using MimeKit;
+  
     using System.Security.Cryptography;
     using System.Text;
 

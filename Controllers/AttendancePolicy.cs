@@ -26,7 +26,7 @@ namespace ZYRAHRM.IntegrationApp.Controllers
             {
                 _logger.LogInformation("Fetching Attendance Policy mappings...");
 
-                var attendancePolicies = await _dbContext.AttendancePolicyMasters.ToListAsync();
+                var attendancePolicies = await _dbContext.AttendancePolicyMasters.Include(p => p.Rules).ToListAsync();
 
                 if (attendancePolicies == null || !attendancePolicies.Any())
                 {
@@ -51,36 +51,36 @@ namespace ZYRAHRM.IntegrationApp.Controllers
         {
             try
             {
-                _logger.LogInformation("Fetching holiday with ID {Id}...", id);
+                _logger.LogInformation("Fetching attendance policy with ID {Id}...", id);
 
-                var holiday = await _dbContext.Holidiays
-                                              .FirstOrDefaultAsync(e => e.Id == id);
+                var attendancePolicy = await _dbContext.AttendancePolicyMasters
+                                                       .FirstOrDefaultAsync(e => e.Id == id);
 
-                if (holiday == null)
+                if (attendancePolicy == null)
                 {
-                    _logger.LogWarning("Holiday with ID {Id} not found.", id);
-                    return NotFound($"Holiday with ID {id} not found.");
+                    _logger.LogWarning("Attendance policy with ID {Id} not found.", id);
+                    return NotFound($"Attendance policy with ID {id} not found.");
                 }
 
-                return Ok(holiday);
+                return Ok(attendancePolicy);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while fetching holiday with ID {Id}.", id);
+                _logger.LogError(ex, "Error occurred while fetching attendance policy with ID {Id}.", id);
                 return StatusCode(500, "Internal server error");
             }
         }
 
-        // NEW - POST create a new holiday
+        // NEW - POST create a new attendance policy
         [HttpPost]
-        public async Task<IActionResult> Create([FromBody] HolidayMaster newHoliday)
+        public async Task<IActionResult> Create([FromBody] AttendancePolicyMaster newAttendancePolicy)
         {
             try
             {
-                if (newHoliday == null)
+                if (newAttendancePolicy == null)
                 {
-                    _logger.LogWarning("Create failed: Holiday data is null.");
-                    return BadRequest("Holiday data is required.");
+                    _logger.LogWarning("Create failed: Attendance policy data is null.");
+                    return BadRequest("Attendance policy data is required.");
                 }
 
                 if (!ModelState.IsValid)
@@ -89,95 +89,115 @@ namespace ZYRAHRM.IntegrationApp.Controllers
                     return BadRequest(ModelState);
                 }
 
-                newHoliday.CreatedOn = DateTime.UtcNow;
-                newHoliday.UpdatedOn = DateTime.UtcNow;
+                newAttendancePolicy.CreatedOn = DateTime.UtcNow;
+                newAttendancePolicy.UpdatedOn = DateTime.UtcNow;
 
-                await _dbContext.Holidiays.AddAsync(newHoliday);
+                await _dbContext.AttendancePolicyMasters.AddAsync(newAttendancePolicy);
                 await _dbContext.SaveChangesAsync();
 
-                _logger.LogInformation("Holiday created successfully with ID {Id}.", newHoliday.Id);
+                _logger.LogInformation("Attendance policy created successfully with ID {Id}.", newAttendancePolicy.Id);
 
-                return CreatedAtAction(nameof(GetById), new { id = newHoliday.Id }, newHoliday);
+                return CreatedAtAction(nameof(GetById), new { id = newAttendancePolicy.Id }, newAttendancePolicy);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while creating a new holiday.");
+                _logger.LogError(ex, "Error occurred while creating a new attendance policy.");
                 return StatusCode(500, "Internal server error");
             }
         }
 
-        // EXISTING - PUT update a holiday
+        // EXISTING - PUT update a attendance policy by ID
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] HolidayMaster updateHoliday)
+        public async Task<IActionResult> Update(int id, [FromBody] AttendancePolicyMaster updateAttendancePolicy)
         {
             try
             {
-                if (updateHoliday == null)
+                if (updateAttendancePolicy == null)
                 {
-                    _logger.LogWarning("Update failed: Holiday data is null.");
-                    return BadRequest("Holiday data is required.");
+                    _logger.LogWarning("Update failed: Attendance policy data is null.");
+                    return BadRequest("Attendance policy data is required.");
                 }
 
-                if (id != updateHoliday.Id)
+                if (id != updateAttendancePolicy.Id)
                 {
-                    _logger.LogWarning("Update failed: ID mismatch. Route ID: {RouteId}, Body ID: {BodyId}", id, updateHoliday.Id);
-                    return BadRequest("Holiday ID mismatch.");
+                    _logger.LogWarning("Update failed: ID mismatch. Route ID: {RouteId}, Body ID: {BodyId}", id, updateAttendancePolicy.Id);
+                    return BadRequest("Attendance policy ID mismatch.");
                 }
 
-                var existingHoldiay = await _dbContext.Holidiays
-                                                       .FirstOrDefaultAsync(e => e.Id == id);
+                var existingAttendancePolicy = await _dbContext.AttendancePolicyMasters
+                    .Include(p => p.Rules)
+                    .FirstOrDefaultAsync(e => e.Id == id);
 
-                if (existingHoldiay == null)
+                if (existingAttendancePolicy == null)
                 {
-                    _logger.LogWarning("Holiday with ID {Id} not found.", id);
-                    return NotFound($"Holiday with ID {id} not found.");
+                    _logger.LogWarning("Attendance policy with ID {Id} not found.", id);
+                    return NotFound($"Attendance policy with ID {id} not found.");
                 }
 
-                existingHoldiay.HolidayCode = updateHoliday.HolidayCode;
-                existingHoldiay.HolidayName = updateHoliday.HolidayName;
-                existingHoldiay.HolidayType = updateHoliday.HolidayType;
-                existingHoldiay.Description = updateHoliday.Description;
-                existingHoldiay.IsActive = updateHoliday.IsActive;
-                existingHoldiay.UpdatedOn = DateTime.UtcNow;   // Always set server-side
+                existingAttendancePolicy.PolicyName = updateAttendancePolicy.PolicyName;
+                existingAttendancePolicy.PolicyType = updateAttendancePolicy.PolicyType;
+                existingAttendancePolicy.Priority = updateAttendancePolicy.Priority;
+                existingAttendancePolicy.IsEnable = updateAttendancePolicy.IsEnable;
+                existingAttendancePolicy.UpdatedOn = DateTime.UtcNow;   // Always set server-side
 
+                if (existingAttendancePolicy.Rules.Count > 0)
+                {
+                    // Delete old rules
+                    _dbContext.AttendancePolicyRules.RemoveRange(existingAttendancePolicy.Rules);
+                }
+
+                // Insert new rules
+                if (updateAttendancePolicy.Rules != null && updateAttendancePolicy.Rules.Any())
+                {
+                    foreach (var rule in updateAttendancePolicy.Rules)
+                    {
+                        var newRule = new AttendancePolicyRule
+                        {
+                            AttendancePolicyId = existingAttendancePolicy.Id,
+                            RuleCode = rule.RuleCode,
+                            RuleValue = rule.RuleValue,
+                        };
+                        await _dbContext.AttendancePolicyRules.AddAsync(newRule);
+                    }
+                }
                 await _dbContext.SaveChangesAsync();
 
-                _logger.LogInformation("Holiday with ID {Id} updated successfully.", id);
-                return Ok(existingHoldiay);
+                _logger.LogInformation("Attendance policy with ID {Id} updated successfully.", id);
+                return Ok(existingAttendancePolicy);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while updating holiday with ID {Id}", id);
+                _logger.LogError(ex, "Error occurred while updating attendance policy with ID {Id}", id);
                 return StatusCode(500, "Internal server error");
             }
         }
 
-        // NEW - DELETE a holiday by ID
+        // NEW - DELETE a attendance policy by ID
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
             try
             {
-                _logger.LogInformation("Deleting holiday with ID {Id}...", id);
+                _logger.LogInformation("Deleting attendance policy with ID {Id}...", id);
 
-                var holiday = await _dbContext.Holidiays
-                                              .FirstOrDefaultAsync(e => e.Id == id);
+                var attendancePolicy = await _dbContext.AttendancePolicyMasters
+                                                        .FirstOrDefaultAsync(e => e.Id == id);
 
-                if (holiday == null)
+                if (attendancePolicy == null)
                 {
-                    _logger.LogWarning("Delete failed: Holiday with ID {Id} not found.", id);
-                    return NotFound($"Holiday with ID {id} not found.");
+                    _logger.LogWarning("Delete failed: Attendance policy with ID {Id} not found.", id);
+                    return NotFound($"Attendance policy with ID {id} not found.");
                 }
 
-                _dbContext.Holidiays.Remove(holiday);
+                _dbContext.AttendancePolicyMasters.Remove(attendancePolicy);
                 await _dbContext.SaveChangesAsync();
 
-                _logger.LogInformation("Holiday with ID {Id} deleted successfully.", id);
+                _logger.LogInformation("Attendance policy with ID {Id} deleted successfully.", id);
                 return NoContent();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while deleting holiday with ID {Id}.", id);
+                _logger.LogError(ex, "Error occurred while deleting attendance policy with ID {Id}.", id);
                 return StatusCode(500, "Internal server error");
             }
         }

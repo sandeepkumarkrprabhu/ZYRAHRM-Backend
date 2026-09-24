@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using ZYRA.Attendance.Infrastructure;
 using ZyraHangfireModels.Models;
+using ZyraHangfireModels.PresentationModels;
 
 namespace ZYRAHRM.IntegrationApp.Controllers
 {
@@ -26,7 +27,25 @@ namespace ZYRAHRM.IntegrationApp.Controllers
             {
                 _logger.LogInformation("Fetching Attendance logs...");
 
-                var attendanceLogs = await _dbContext.AttendanceLogs.ToListAsync();
+                var attendanceLogs =
+                        await (from al in _dbContext.AttendanceLogs
+                        join em in _dbContext.EmployeeMappings
+                            on al.EmployeeCode equals em.BiometricUserId
+                        select new AttendanceViewResponse
+                        {
+                            Id = al.Id,
+                            EmployeeCode = al.EmployeeCode,
+                            CheckTime = al.CheckTime,
+                            DeviceId = al.DeviceId,
+                            IsProcessed = al.IsProcessed,
+                            ProcessedAt = al.ProcessedAt,
+                            AttendanceState = al.AttendanceState,
+                            Status = al.Status,
+                            ErrorMessage = al.ErrorMessage,
+                            EmployeeName = em.EmployeeName,   // comes from EmployeeMapping
+                            PunchType = al.ErrorMessage??"".ToString()       // comes from EmployeeMapping
+                        }).ToListAsync();
+
 
                 if (attendanceLogs == null || !attendanceLogs.Any())
                 {
@@ -52,7 +71,23 @@ namespace ZYRAHRM.IntegrationApp.Controllers
             {
                 _logger.LogInformation("Fetching Attendance logs...");
 
-                IQueryable<AttendanceLog> query = _dbContext.AttendanceLogs;
+                IQueryable<AttendanceViewResponse> query = (from al in _dbContext.AttendanceLogs
+                                                         join em in _dbContext.EmployeeMappings
+                                                             on al.EmployeeCode equals em.BiometricUserId
+                                                         select new AttendanceViewResponse
+                                                         {
+                                                             Id = al.Id,
+                                                             EmployeeCode = al.EmployeeCode,
+                                                             CheckTime = al.CheckTime,
+                                                             DeviceId = al.DeviceId,
+                                                             IsProcessed = al.IsProcessed,
+                                                             ProcessedAt = al.ProcessedAt,
+                                                             AttendanceState = al.AttendanceState,
+                                                             Status = al.Status,
+                                                             ErrorMessage = al.ErrorMessage,
+                                                             EmployeeName = em.EmployeeName,   // comes from EmployeeMapping
+                                                             PunchType = al.ErrorMessage ?? "".ToString()       // comes from EmployeeMapping
+                                                         });
 
                 // Apply filter if employeeCode is provided
                 if (!string.IsNullOrWhiteSpace(employeeCode))

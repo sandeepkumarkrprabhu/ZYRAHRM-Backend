@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using Zyra.LantimeServiceApp.Interfaces;
+using Zyra.LantimeServiceApp.Models;
 using ZYRA.Attendance.Infrastructure;
 using ZyraHangfireModels.PresentationModels;
 using ZYRAHRM.IntegrationApp.Helper;
@@ -15,10 +17,13 @@ namespace ZYRAHRM.IntegrationApp.Controllers
         private readonly AttendanceDbContext _dbContext;
         private readonly ILogger<AuthController> _logger;
 
-        public AuthController(AttendanceDbContext dbContext, ILogger<AuthController> logger)
+        private readonly IEmailService _emailService;
+
+        public AuthController(AttendanceDbContext dbContext, ILogger<AuthController> logger, IEmailService emailService)
         {
             _dbContext = dbContext;
             _logger = logger;
+            _emailService = emailService;
         }
 
         // POST: api/auth/login
@@ -70,6 +75,121 @@ namespace ZYRAHRM.IntegrationApp.Controllers
                 RoleName = user.RoleName
             });
         }
+
+
+        [Authorize]
+        [HttpPost("changepassword")]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+        {
+            try
+            {
+                if (request == null)
+                    return BadRequest("Password data is required.");
+
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
+                // Get user from database
+                var user = await _dbContext.Users
+                    .FirstOrDefaultAsync(x => x.Id == Convert.ToInt32(request.UserId));
+
+                if (user == null)
+                    return NotFound("User not found.");
+
+                // Verify current password
+                var currentPasswordValid =
+                    PasswordHelper.VerifyPasswordHash(
+                        request.CurrentPassword,
+                        user.PasswordHash,
+                        user.PasswordSalt);
+
+                if (!currentPasswordValid)
+                    return BadRequest("Current password is incorrect.");
+
+                // Optional: prevent using the same password
+                var samePassword =
+                    PasswordHelper.VerifyPasswordHash(
+                        request.NewPassword,
+                        user.PasswordHash,
+                        user.PasswordSalt);
+
+                if (samePassword)
+                    return BadRequest("New password must be different from the current password.");
+
+                // Create new password hash + salt
+                PasswordHelper.CreatePasswordHash(
+                    request.NewPassword,
+                    out byte[] passwordHash,
+                    out byte[] passwordSalt);
+
+                // Update password
+                user.PasswordHash = Convert.ToBase64String(passwordHash);
+                user.PasswordSalt = Convert.ToBase64String(passwordSalt);
+
+                // Password has now been changed
+                user.IsPasswordResetRequired = false;
+
+                // Optional security fields
+                user.FailedLoginAttempts = 0;
+                user.IsLocked = false;
+
+                await _dbContext.SaveChangesAsync();
+
+                _logger.LogInformation(
+                    "Password changed successfully for user ID {UserId}.",
+                    user.Id);
+
+                // Send password email
+                try
+                {
+                    var emailMessage = new EmailMessage
+                    {
+                        To = user.Email,
+                        ToName = user.FullName,
+                        Subject = "Your ZYRA HRM password has been changed",
+
+                        PlainTextBody =
+                            $"Hi {user.FullName},\n\n" +
+                            $"Your ZYRA HRM password has been changed successfully.\n\n" +
+                            $"Your new password is: {request.NewPassword}\n\n" +
+                            $"Login: https://192.168.1.15:6369\n\n" +
+                            $"If you did not make this change, please contact your administrator immediately.",
+
+                        HtmlBody =
+                            $"<p>Hi <strong>{user.FullName}</strong>,</p>" +
+                            $"<p>Your ZYRA HRM password has been changed successfully.</p>" +
+                            $"<p><strong>New Password:</strong> {request.NewPassword}</p>" +
+                            $"<p><a href='https://192.168.1.15:6369'>Login to ZYRA HRM</a></p>" +
+                            $"<p>If you did not make this change, please contact your administrator immediately.</p>"
+                    };
+
+                    //await _emailService.SendAsync(emailMessage);
+                }
+                catch (Exception ex)
+                {
+                    // Password was changed successfully.
+                    // Email failure should not undo the password change.
+                    _logger.LogError(
+                        ex,
+                        "Password changed but failed to send password email to {Email}.",
+                        user.Email);
+                }
+
+                return Ok(new
+                {
+                    message = "Password changed successfully."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Error occurred while changing password.");
+
+                return StatusCode(500, "Internal server error.");
+            }
+        }
+
 
     }
 
