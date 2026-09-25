@@ -1,40 +1,34 @@
 using Hangfire.Console;
 using Hangfire.Server;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.Models;
-using ZYRA.Attendance.Infrastructure;
 using ZyraHangfireModels.Models;
-using ZyraHangfireModels.ServiceModels;
 
 namespace Zyra.LantimeServiceApp.Services
 {
     public sealed class AttendanceSyncService : IAttendanceSyncService
     {
-        private readonly AttendanceDbContext _dbContext;
         private readonly IEmployeeAttendanceService _employeeAttendanceService;
         private readonly IAttendanceDbService _attendanceDbService;
         private readonly IAttendanceApiService _attendanceApiService;
         private readonly IAttendanceLogService _attendanceLogService;
-        private readonly IShiftService _shiftService;
+        private readonly IAttendanceValidationService _attendanceValidationService;
         private readonly ILogger<AttendanceSyncService> _logger;
 
         public AttendanceSyncService(
-            AttendanceDbContext dbContext,
             IAttendanceDbService attendanceDbService,
             IAttendanceApiService attendanceApiService,
             IAttendanceLogService attendanceLogService,
             IEmployeeAttendanceService employeeAttendanceService,
-            IShiftService shiftService,
+            IAttendanceValidationService attendanceValidationService,
             ILogger<AttendanceSyncService> logger)
         {
-            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             _attendanceDbService = attendanceDbService ?? throw new ArgumentNullException(nameof(attendanceDbService));
             _attendanceApiService = attendanceApiService ?? throw new ArgumentNullException(nameof(attendanceApiService));
             _attendanceLogService = attendanceLogService ?? throw new ArgumentNullException(nameof(attendanceLogService));
             _employeeAttendanceService = employeeAttendanceService ?? throw new ArgumentNullException(nameof(employeeAttendanceService));
-            _shiftService = shiftService ?? throw new ArgumentNullException(nameof(shiftService));
+            _attendanceValidationService = attendanceValidationService ?? throw new ArgumentNullException(nameof(attendanceValidationService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -136,32 +130,17 @@ namespace Zyra.LantimeServiceApp.Services
                 return;
             }
 
-            var shift = _shiftService.BuildShiftWindow(
+            var validation = await _attendanceValidationService.ValidateCheckInAsync(
+                employee,
                 policy,
-                record.CheckInTime,
-                record.EmployeeName);
+                record);
 
-            if (shift == null || record.CheckInTime < shift.Start || record.CheckInTime > shift.End)
+            if (!validation.IsValid)
             {
-                Log(context,
-                    $"Check-in skipped for {record.EmployeeName}. " +
-                    $"Check-in Time: {record.CheckInTime:dd-MM-yyyy HH:mm:ss}",
+                Log(
+                    context,
+                    $"Check-in skipped for {record.EmployeeName}. {validation.Reason}",
                     ConsoleTextColor.Yellow);
-                return;
-            }
-
-            var alreadyCheckedIn = await _dbContext.AttendanceLogs
-                .AsNoTracking()
-                .AnyAsync(x =>
-                    x.EmployeeCode == employee.EmployeeCode &&
-                    x.Status == "Success" &&
-                    x.CheckTime >= shift.Start &&
-                    x.CheckTime <= shift.End);
-
-            if (alreadyCheckedIn)
-            {
-                Log(context,
-                    $"Check-in skipped for {record.EmployeeName}. Employee has already checked in successfully.");
                 return;
             }
 
@@ -206,21 +185,16 @@ namespace Zyra.LantimeServiceApp.Services
                 return;
             }
 
-            if (record.CheckOutTime == DateTime.MinValue)
-                return;
-
-            var shift = _shiftService.BuildShiftWindow(
+            var validation = _attendanceValidationService.ValidateCheckOut(
+                employee,
                 policy,
-                record.CheckOutTime,
-                record.EmployeeName);
+                record);
 
-            if (shift == null ||
-                record.CheckOutTime < shift.ShiftEnd ||
-                record.CheckOutTime > shift.End)
+            if (!validation.IsValid)
             {
-                Log(context,
-                    $"Check-out skipped for {record.EmployeeName}. " +
-                    $"Check-out Time: {record.CheckOutTime:dd-MM-yyyy HH:mm:ss}",
+                Log(
+                    context,
+                    $"Check-out skipped for {record.EmployeeName}. {validation.Reason}",
                     ConsoleTextColor.Yellow);
                 return;
             }
