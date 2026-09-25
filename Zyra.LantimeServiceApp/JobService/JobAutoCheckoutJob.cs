@@ -17,6 +17,7 @@ namespace Zyra.LantimeServiceApp.JobService
         private readonly IAttendanceApiService _apiService;
         private readonly IJobService _jobService;
         private readonly AttendanceDbContext _dbContext;
+        private readonly IExtraTimeEvaluationService _extraTimeEvaluationService;
         private readonly ILogger<JobAutoCheckoutJob> _logger;
 
         public JobAutoCheckoutJob(
@@ -25,6 +26,7 @@ namespace Zyra.LantimeServiceApp.JobService
             IAttendanceApiService apiService,
             IJobService jobService,
             AttendanceDbContext dbContext,
+            IExtraTimeEvaluationService extraTimeEvaluationService,
             ILogger<JobAutoCheckoutJob> logger)
         {
             _employeeService = employeeService;
@@ -32,6 +34,7 @@ namespace Zyra.LantimeServiceApp.JobService
             _apiService = apiService;
             _jobService = jobService;
             _dbContext = dbContext;
+            _extraTimeEvaluationService = extraTimeEvaluationService;
             _logger = logger;
         }
 
@@ -367,7 +370,7 @@ namespace Zyra.LantimeServiceApp.JobService
 
 
                 // ============================================================
-                // 4. JOB COMPLETED
+                // 5. JOB COMPLETED
                 // ============================================================
 
                 _logger.LogInformation(
