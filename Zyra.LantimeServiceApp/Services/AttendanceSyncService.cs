@@ -172,7 +172,8 @@ namespace Zyra.LantimeServiceApp.Services
             var success = await _attendanceApiService.SendAsync(request);
 
             await _attendanceLogService.LogAsync(
-                record,
+                record.EmployeeCode,
+                request.date_time,
                 success,
                 request.type ?? "checkin");
 
@@ -232,7 +233,8 @@ namespace Zyra.LantimeServiceApp.Services
             var success = await _attendanceApiService.SendAsync(request);
 
             await _attendanceLogService.LogAsync(
-                record,
+                record.EmployeeCode,
+                request.date_time,
                 success,
                 request.type ?? "checkOut");
 
