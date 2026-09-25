@@ -13,6 +13,7 @@ namespace Zyra.LantimeServiceApp.Services
     public sealed class AttendanceSyncService : IAttendanceSyncService
     {
         private readonly AttendanceDbContext _dbContext;
+        private readonly IEmployeeAttendanceService _employeeAttendanceService;
         private readonly IAttendanceDbService _attendanceDbService;
         private readonly IAttendanceApiService _attendanceApiService;
         private readonly IAttendanceLogService _attendanceLogService;
@@ -24,6 +25,7 @@ namespace Zyra.LantimeServiceApp.Services
             IAttendanceDbService attendanceDbService,
             IAttendanceApiService attendanceApiService,
             IAttendanceLogService attendanceLogService,
+            IEmployeeAttendanceService employeeAttendanceService,
             IShiftService shiftService,
             ILogger<AttendanceSyncService> logger)
         {
@@ -31,6 +33,7 @@ namespace Zyra.LantimeServiceApp.Services
             _attendanceDbService = attendanceDbService ?? throw new ArgumentNullException(nameof(attendanceDbService));
             _attendanceApiService = attendanceApiService ?? throw new ArgumentNullException(nameof(attendanceApiService));
             _attendanceLogService = attendanceLogService ?? throw new ArgumentNullException(nameof(attendanceLogService));
+            _employeeAttendanceService = employeeAttendanceService ?? throw new ArgumentNullException(nameof(employeeAttendanceService));
             _shiftService = shiftService ?? throw new ArgumentNullException(nameof(shiftService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
@@ -68,14 +71,14 @@ namespace Zyra.LantimeServiceApp.Services
                     .Distinct()
                     .ToList();
 
-                var employeeMap = await GetEmployeeMappingsAsync(biometricIds);
+                var employeeMap = await _employeeAttendanceService.GetEmployeeMappingsAsync(biometricIds);
 
                 var employeeIds = employeeMap.Values
                     .Select(x => x.UserId)
                     .Distinct()
                     .ToList();
 
-                var policyMap = await GetEmployeeAttendancePoliciesAsync(employeeIds);
+                var policyMap = await _employeeAttendanceService.GetEmployeeAttendancePoliciesAsync(employeeIds);
 
                 foreach (var record in records)
                 {
@@ -240,63 +243,6 @@ namespace Zyra.LantimeServiceApp.Services
                 context,
                 $"Biometric check-out {(success ? "updated successfully" : "update failed")} for {record.EmployeeName}",
                 success ? ConsoleTextColor.Green : ConsoleTextColor.Red);
-        }
-
-        private async Task<Dictionary<string, EmployeeMapperDto>> GetEmployeeMappingsAsync(
-            IEnumerable<string> biometricUserIds)
-        {
-            var ids = biometricUserIds
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Distinct()
-                .ToList();
-
-            if (ids.Count == 0)
-                return new Dictionary<string, EmployeeMapperDto>();
-
-            var employees = await _dbContext.EmployeeMappings
-                .AsNoTracking()
-                .Where(x =>
-                    ids.Contains(x.BiometricUserId) &&
-                    !x.IsExcludeFromBiometric &&
-                    x.IsActive)
-                .Select(x => new EmployeeMapperDto
-                {
-                    UserId = x.Id,
-                    EmployeeCode = x.HRMEmployeeCode,
-                    EmployeeName = x.EmployeeName,
-                    BiometricUserId = x.BiometricUserId
-                })
-                .ToListAsync();
-
-            return employees
-                .Where(x => !string.IsNullOrWhiteSpace(x.BiometricUserId))
-                .GroupBy(x => x.BiometricUserId!)
-                .ToDictionary(x => x.Key, x => x.First());
-        }
-
-        private async Task<Dictionary<int, EmployeeAttendancePolicy>> GetEmployeeAttendancePoliciesAsync(
-            IEnumerable<int> employeeIds)
-        {
-            var ids = employeeIds.Distinct().ToList();
-
-            if (ids.Count == 0)
-                return new Dictionary<int, EmployeeAttendancePolicy>();
-
-            var policies = await _dbContext.EmployeeAttendancePolicies
-                .AsNoTracking()
-                .Include(x => x.AttendancePolicy)
-                .ThenInclude(x => x.Rules)
-                .Where(x =>
-                    ids.Contains(x.EmployeeId) &&
-                    x.IsEnabled &&
-                    x.AttendancePolicy != null &&
-                    x.AttendancePolicy.IsEnable)
-                .OrderByDescending(x => x.EffectiveFrom)
-                .ToListAsync();
-
-            return policies
-                .GroupBy(x => x.EmployeeId)
-                .ToDictionary(x => x.Key, x => x.First());
         }
 
         private void Log(
