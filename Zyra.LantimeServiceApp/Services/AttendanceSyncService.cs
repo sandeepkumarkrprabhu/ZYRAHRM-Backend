@@ -219,10 +219,12 @@ namespace Zyra.LantimeServiceApp.Services
                 success ? ConsoleTextColor.Green : ConsoleTextColor.Red);
         }
 
-        private void Log(
-            PerformContext? context,
-            string message,
-            ConsoleTextColor color = ConsoleTextColor.Yellow)
+        private void Log(PerformContext? context, string message)
+        {
+            Log(context, message, ConsoleTextColor.Yellow);
+        }
+
+        private void Log(PerformContext? context,string message, ConsoleTextColor color)
         {
             _logger.LogInformation(message);
             context?.WriteLine(color, message);

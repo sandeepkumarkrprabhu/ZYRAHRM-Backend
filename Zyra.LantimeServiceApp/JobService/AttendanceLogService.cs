@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
 using Zyra.LantimeServiceApp.Interfaces;
-using Zyra.LantimeServiceApp.Models;
 using ZYRA.Attendance.Infrastructure;
 using ZyraHangfireModels.Models;
 
@@ -20,80 +19,53 @@ namespace Zyra.LantimeServiceApp.JobService
         }
 
         public async Task LogAsync(
-            AttendanceDto attendance,
+            string employeeCode,
+            DateTime checkTime,
             bool isSuccess,
             string attendanceState)
         {
             try
             {
-                if (attendance == null)
+                if (string.IsNullOrWhiteSpace(employeeCode))
                 {
-                    _logger.LogWarning("Attempted to log null attendance");
+                    _logger.LogWarning(
+                        "Attempted to log attendance without an employee code.");
+
                     return;
                 }
 
-                var checkTime = ResolveCheckTime(attendance);
-                var checkinStatus = IsCheckIn(checkTime);
-
                 var log = new AttendanceLog
                 {
-                    EmployeeCode = attendance.EmployeeCode,
+                    EmployeeCode = employeeCode,
                     IsProcessed = isSuccess,
                     ProcessedAt = DateTime.Now,
                     Status = isSuccess ? "Success" : "Failed",
                     AttendanceState = attendanceState ?? string.Empty,
                     CheckTime = checkTime,
-                    ErrorMessage = (checkinStatus == true ? "CheckIn" : "CheckOut")
+                    ErrorMessage = isSuccess
+                        ? null
+                        : $"Failed to process {attendanceState}."
                 };
 
                 _context.AttendanceLogs.Add(log);
+
                 await _context.SaveChangesAsync();
 
                 _logger.LogInformation(
-                    "Attendance log saved for Employee {EmployeeCode} | Status: {Status}",
-                    attendance.EmployeeCode,
-                    log.Status);
+                    "Attendance log saved for Employee {EmployeeCode} | State: {State} | Status: {Status} | CheckTime: {CheckTime}",
+                    employeeCode,
+                    attendanceState,
+                    log.Status,
+                    checkTime);
             }
             catch (Exception ex)
             {
-                // IMPORTANT:
-                // Logging failure should NOT break main job
-                _logger.LogError(ex,
+                // Logging failure should not break the main attendance job.
+                _logger.LogError(
+                    ex,
                     "Failed to save attendance log for Employee {EmployeeCode}",
-                    attendance?.EmployeeCode);
+                    employeeCode);
             }
-        }
-
-        // -------------------------------------------------
-        // SAFE CHECK TIME RESOLUTION
-        // -------------------------------------------------
-        private DateTime ResolveCheckTime(AttendanceDto attendance)
-        {
-            var time = DateTime.Now.TimeOfDay;
-
-            // Same logic you had earlier but isolated cleanly
-            if (time <= new TimeSpan(15, 0, 0))
-            {
-                return attendance.CheckInTime != DateTime.MinValue
-                    ? attendance.CheckInTime
-                    : DateTime.Now;
-            }
-
-            return attendance.CheckOutTime != DateTime.MinValue
-                ? attendance.CheckOutTime
-                : DateTime.Now;
-        }
-
-        private bool IsCheckIn(DateTime bioEntryTime)
-        {
-            var punchTime = bioEntryTime;
-            // Same logic you had earlier but isolated cleanly
-            if (punchTime.TimeOfDay <= new TimeSpan(15, 0, 0))
-            {
-                return true;
-            }
-
-            return false;
         }
     }
 }

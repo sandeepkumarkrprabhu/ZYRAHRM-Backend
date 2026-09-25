@@ -1,3 +1,4 @@
+using Zyra.LantimeServiceApp.Models;
 using ZyraHangfireModels.Models;
 
 namespace Zyra.LantimeServiceApp.Interfaces

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Zyra.LantimeServiceApp.Interfaces;
+using Zyra.LantimeServiceApp.Models;
 using ZYRA.Attendance.Infrastructure;
 using ZyraHangfireModels.Models;
 
