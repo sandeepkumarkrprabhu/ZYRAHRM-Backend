@@ -1,4 +1,4 @@
-﻿using Zyra.LantimeServiceApp.Interfaces;
+using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.Models;
 using ZyraHangfireModels.Models;
 
@@ -15,47 +15,30 @@ namespace Zyra.LantimeServiceApp.JobService
 
         public AttendanceAPIDto? BuildRequest(
             EmployeeMapping employee,
-            AttendanceDto attendance, TimeSpan timeSpan)
+            AttendanceDto attendance,
+            TimeSpan timeSpan)
         {
-            //var now = DateTime.Now.TimeOfDay;
             var now = timeSpan;
-            //var now = new TimeSpan(10, 0, 0); // 10:00 AM
 
-
-            // -------------------------------
-            // SAFETY CHECKS
-            // -------------------------------
             if (attendance == null)
                 return null;
 
             if (string.IsNullOrEmpty(employee.HRMEmployeeCode))
                 return null;
 
-            // -------------------------------
-            // RULE 1: CHECK-IN WINDOW
-            // -------------------------------
             if (IsCheckInWindow(now))
             {
                 return BuildCheckIn(employee, attendance);
             }
 
-            // -------------------------------
-            // RULE 2: CHECK-OUT WINDOW
-            // -------------------------------
             if (IsCheckOutWindow(now))
             {
                 return BuildCheckOut(employee, attendance);
             }
 
-            // -------------------------------
-            // DEFAULT: NO ACTION
-            // -------------------------------
             return null;
         }
 
-        // =====================================================
-        // CHECK-IN LOGIC
-        // =====================================================
         private AttendanceAPIDto? BuildCheckIn(
             EmployeeMapping employee,
             AttendanceDto attendance)
@@ -71,9 +54,6 @@ namespace Zyra.LantimeServiceApp.JobService
             };
         }
 
-        // =====================================================
-        // CHECK-OUT LOGIC
-        // =====================================================
         private AttendanceAPIDto? BuildCheckOut(
             EmployeeMapping employee,
             AttendanceDto attendance)
@@ -95,18 +75,14 @@ namespace Zyra.LantimeServiceApp.JobService
             };
         }
 
-        // =====================================================
-        // TIME RULES
-        // =====================================================
         private bool IsCheckInWindow(TimeSpan now)
         {
-            return DateTime.Now.TimeOfDay >= CheckInStart && DateTime.Now.TimeOfDay <= CheckInEnd;
+            return now >= CheckInStart && now <= CheckInEnd;
         }
 
         private bool IsCheckOutWindow(TimeSpan now)
         {
-            return DateTime.Now.TimeOfDay >= CheckOutStart && DateTime.Now.TimeOfDay <= CheckOutEnd;
+            return now >= CheckOutStart && now <= CheckOutEnd;
         }
     }
-
 }
