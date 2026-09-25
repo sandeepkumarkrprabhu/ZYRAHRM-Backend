@@ -3,7 +3,6 @@ using Hangfire.Server;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Zyra.LantimeServiceApp.Constants;
 using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.Models;
 using ZYRA.Attendance.Infrastructure;
@@ -18,41 +17,41 @@ namespace Zyra.LantimeServiceApp.Services
 
         private readonly AttendanceDbContext _dbContext;
         private readonly IAttendanceProvider _attendanceProvider;
-        private readonly IAttendanceApiService _apiService;
-        private readonly IExtraTimeCalculator _calculator;
+        private readonly IAttendanceApiService _attendanceApiService;
         private readonly IShiftService _shiftService;
+        private readonly IExtraTimeCalculator _calculator;
         private readonly ExtraTimeEvaluationSettings _settings;
         private readonly ILogger<ExtraTimeEvaluationService> _logger;
 
         public ExtraTimeEvaluationService(
             AttendanceDbContext dbContext,
             IAttendanceProvider attendanceProvider,
-            IAttendanceApiService apiService,
-            IExtraTimeCalculator calculator,
+            IAttendanceApiService attendanceApiService,
             IShiftService shiftService,
+            IExtraTimeCalculator calculator,
             IOptions<ExtraTimeEvaluationSettings> options,
             ILogger<ExtraTimeEvaluationService> logger)
         {
-            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-            _attendanceProvider = attendanceProvider ?? throw new ArgumentNullException(nameof(attendanceProvider));
-            _apiService = apiService ?? throw new ArgumentNullException(nameof(apiService));
-            _calculator = calculator ?? throw new ArgumentNullException(nameof(calculator));
-            _shiftService = shiftService ?? throw new ArgumentNullException(nameof(shiftService));
-            _settings = options?.Value ?? throw new ArgumentNullException(nameof(options));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _dbContext = dbContext;
+            _attendanceProvider = attendanceProvider;
+            _attendanceApiService = attendanceApiService;
+            _shiftService = shiftService;
+            _calculator = calculator;
+            _settings = options.Value;
+            _logger = logger;
         }
 
         public async Task EvaluateAsync(
             DateTime evaluationTime,
             PerformContext? context = null)
         {
-            var workDates = new[]
+            // Evaluate both today and yesterday so an overnight shift can
+            // finish on the following calendar day.
+            foreach (var workDate in new[]
             {
                 evaluationTime.Date,
                 evaluationTime.Date.AddDays(-1)
-            };
-
-            foreach (var workDate in workDates)
+            })
             {
                 await EvaluateWorkDateAsync(workDate, evaluationTime, context);
             }
@@ -66,7 +65,7 @@ namespace Zyra.LantimeServiceApp.Services
             var assignments = await _dbContext.EmployeeAttendancePolicies
                 .AsNoTracking()
                 .Include(x => x.AttendancePolicy)
-                .ThenInclude(x => x.Rules)
+                    .ThenInclude(x => x.Rules)
                 .Include(x => x.EmployeeMapping)
                 .Where(x =>
                     x.IsEnabled &&
@@ -75,193 +74,154 @@ namespace Zyra.LantimeServiceApp.Services
                     x.EmployeeMapping != null &&
                     x.EmployeeMapping.IsActive &&
                     !x.EmployeeMapping.IsExcludeFromBiometric &&
-                    x.EffectiveFrom.Date <= workDate &&
-                    x.EffectiveTo.Date >= workDate)
+                    x.EffectiveFrom <= workDate.AddDays(1).AddTicks(-1) &&
+                    x.EffectiveTo >= workDate)
                 .ToListAsync();
 
             if (assignments.Count == 0)
                 return;
 
-            var candidates = assignments
-                .Select(x => BuildCandidate(x, workDate))
-                .Where(x => x != null)
-                .Select(x => x!)
-                .Where(x => x.ShiftEnd.AddMinutes(
-                    x.IsOvernight
-                        ? _settings.OvernightShiftEvaluationDelayMinutes
-                        : _settings.DayShiftEvaluationDelayMinutes) <= evaluationTime)
-                .ToList();
-
-            if (candidates.Count == 0)
-                return;
-
-            var from = candidates.Min(x => x.ShiftEnd);
-            var to = candidates.Max(x =>
-                x.ShiftEnd.AddMinutes(_settings.MaximumOvertimeMinutes));
-
-            var punches = await _attendanceProvider.GetPunchesAsync(from, to);
-
-            var punchesByEmployee = punches
-                .Where(x => !string.IsNullOrWhiteSpace(x.EmployeeCode))
-                .GroupBy(x => x.EmployeeCode)
-                .ToDictionary(
-                    x => x.Key,
-                    x => x.Select(p => p.CheckTime).ToList());
-
-            foreach (var candidate in candidates)
+            foreach (var assignment in assignments)
             {
-                await EvaluateCandidateAsync(
-                    candidate,
-                    punchesByEmployee,
+                var employee = assignment.EmployeeMapping;
+
+                if (employee == null ||
+                    string.IsNullOrWhiteSpace(employee.BiometricUserId) ||
+                    string.IsNullOrWhiteSpace(employee.HRMEmployeeCode))
+                {
+                    continue;
+                }
+
+                var shift = _shiftService.BuildShiftWindow(
+                    assignment,
+                    workDate.AddHours(12),
+                    employee.EmployeeName ?? "Unknown");
+
+                if (shift == null)
+                    continue;
+
+                var delayMinutes = shift.IsOvernight
+                    ? _settings.OvernightShiftEvaluationDelayMinutes
+                    : _settings.DayShiftEvaluationDelayMinutes;
+
+                if (shift.ShiftEnd.AddMinutes(delayMinutes) > evaluationTime)
+                    continue;
+
+                await EvaluateEmployeeAsync(
+                    employee,
+                    shift.ShiftEnd,
                     evaluationTime,
                     context);
             }
         }
 
-        private ExtraTimeCandidate? BuildCandidate(
-            EmployeeAttendancePolicy assignment,
-            DateTime workDate)
-        {
-            var rules = assignment.AttendancePolicy?.Rules;
-
-            if (rules == null)
-                return null;
-
-            var startValue = rules
-                .FirstOrDefault(x => x.RuleCode == HRMConstants.SHIFT_START_TIME_NAME)
-                ?.RuleValue;
-
-            var endValue = rules
-                .FirstOrDefault(x => x.RuleCode == HRMConstants.SHIFT_END_TIME_NAME)
-                ?.RuleValue;
-
-            if (!TimeSpan.TryParse(startValue, out var shiftStart) ||
-                !TimeSpan.TryParse(endValue, out var shiftEnd))
-            {
-                _logger.LogWarning(
-                    "Extra-time evaluation skipped for employee {EmployeeId}: invalid shift times.",
-                    assignment.EmployeeId);
-
-                return null;
-            }
-
-            var shift = _shiftService.BuildShiftWindow(
-                assignment,
-                workDate.AddHours(12),
-                assignment.EmployeeMapping?.EmployeeName ?? "Unknown");
-
-            if (shift == null)
-                return null;
-
-            return new ExtraTimeCandidate(
-                assignment.EmployeeId,
-                assignment.EmployeeMapping!,
-                shift.ShiftEnd,
-                shift.IsOvernight);
-        }
-
-        private async Task EvaluateCandidateAsync(
-            ExtraTimeCandidate candidate,
-            Dictionary<string, List<DateTime>> punchesByEmployee,
+        private async Task EvaluateEmployeeAsync(
+            EmployeeMapping employee,
+            DateTime shiftEnd,
             DateTime evaluationTime,
             PerformContext? context)
         {
-            if (string.IsNullOrWhiteSpace(candidate.Employee.BiometricUserId) ||
-                string.IsNullOrWhiteSpace(candidate.Employee.HRMEmployeeCode))
-                return;
+            var from = shiftEnd;
+            var to = shiftEnd.AddMinutes(_settings.MaximumOvertimeMinutes);
 
-            if (!punchesByEmployee.TryGetValue(
-                    candidate.Employee.BiometricUserId,
-                    out var punches))
-                return;
+            // Pull raw punches, not the min/max daily AttendanceDto. This is
+            // essential for overnight shifts and for finding the actual last
+            // punch after the scheduled shift end.
+            var punches = await _attendanceProvider.GetPunchesAsync(from, to);
+
+            var employeePunches = punches
+                .Where(x => x.EmployeeCode == employee.BiometricUserId)
+                .Select(x => x.CheckTime)
+                .ToList();
 
             var interval = _calculator.Calculate(
-                candidate.ShiftEnd,
-                punches,
+                shiftEnd,
+                employeePunches,
                 evaluationTime,
                 _settings.MaximumOvertimeMinutes);
 
             if (interval == null)
                 return;
 
-            var hasExtraCheckIn = await HasExtraLogAsync(
-                candidate.Employee.BiometricUserId,
+            var checkInLogged = await HasSuccessfulExtraLogAsync(
+                employee.BiometricUserId!,
                 interval.CheckInTime,
                 ExtraCheckInState);
 
-            if (!hasExtraCheckIn)
+            if (!checkInLogged)
             {
-                var success = await _apiService.SendAsync(new AttendanceAPIDto
-                {
-                    employee_code = candidate.Employee.HRMEmployeeCode,
-                    type = "checkin",
-                    date_time = interval.CheckInTime
-                });
+                var success = await _attendanceApiService.SendAsync(
+                    new AttendanceAPIDto
+                    {
+                        employee_code = employee.HRMEmployeeCode,
+                        type = "checkin",
+                        date_time = interval.CheckInTime
+                    });
 
                 await SaveLogAsync(
-                    candidate.Employee.BiometricUserId,
+                    employee.BiometricUserId!,
                     interval.CheckInTime,
                     ExtraCheckInState,
                     success,
                     success
-                        ? $"Extra time check-in. Extra minutes: {interval.DurationMinutes}."
+                        ? $"Extra-time check-in. Duration: {interval.DurationMinutes} minutes."
                         : "Failed to create extra-time check-in.");
 
                 if (!success)
                     return;
             }
 
-            var hasExtraCheckOut = await HasExtraLogAsync(
-                candidate.Employee.BiometricUserId,
+            var checkoutLogged = await HasSuccessfulExtraLogAsync(
+                employee.BiometricUserId!,
                 interval.CheckOutTime,
                 ExtraCheckOutState);
 
-            if (hasExtraCheckOut)
-                return;
-
-            var checkoutSuccess = await _apiService.SendAsync(new AttendanceAPIDto
+            if (!checkoutLogged)
             {
-                employee_code = candidate.Employee.HRMEmployeeCode,
-                type = "checkout",
-                date_time = interval.CheckOutTime
-            });
+                var success = await _attendanceApiService.SendAsync(
+                    new AttendanceAPIDto
+                    {
+                        employee_code = employee.HRMEmployeeCode,
+                        type = "checkout",
+                        date_time = interval.CheckOutTime
+                    });
 
-            await SaveLogAsync(
-                candidate.Employee.BiometricUserId,
-                interval.CheckOutTime,
-                ExtraCheckOutState,
-                checkoutSuccess,
-                checkoutSuccess
-                    ? $"Extra time checkout. Extra minutes: {interval.DurationMinutes}."
-                    : "Failed to create extra-time check-out.");
+                await SaveLogAsync(
+                    employee.BiometricUserId!,
+                    interval.CheckOutTime,
+                    ExtraCheckOutState,
+                    success,
+                    success
+                        ? $"Extra-time check-out. Duration: {interval.DurationMinutes} minutes."
+                        : "Failed to create extra-time check-out.");
+            }
 
             Log(
                 context,
-                $"Extra time {(checkoutSuccess ? "SUCCESS" : "FAILED")} for " +
-                $"{candidate.Employee.EmployeeName}: " +
+                $"Extra time processed for {employee.EmployeeName}: " +
                 $"{interval.CheckInTime:dd-MM-yyyy HH:mm} - " +
                 $"{interval.CheckOutTime:dd-MM-yyyy HH:mm} " +
                 $"({interval.DurationMinutes} minutes).");
         }
 
-        private async Task<bool> HasExtraLogAsync(
-            string biometricUserId,
+        private async Task<bool> HasSuccessfulExtraLogAsync(
+            string employeeCode,
             DateTime checkTime,
-            string state)
+            string attendanceState)
         {
             return await _dbContext.AttendanceLogs
                 .AsNoTracking()
                 .AnyAsync(x =>
-                    x.EmployeeCode == biometricUserId &&
+                    x.EmployeeCode == employeeCode &&
                     x.IsProcessed &&
-                    x.AttendanceState == state &&
+                    x.AttendanceState == attendanceState &&
                     x.CheckTime == checkTime);
         }
 
         private async Task SaveLogAsync(
             string employeeCode,
             DateTime checkTime,
-            string state,
+            string attendanceState,
             bool success,
             string message)
         {
@@ -269,7 +229,7 @@ namespace Zyra.LantimeServiceApp.Services
             {
                 EmployeeCode = employeeCode,
                 CheckTime = checkTime,
-                AttendanceState = state,
+                AttendanceState = attendanceState,
                 IsProcessed = success,
                 ProcessedAt = DateTime.Now,
                 Status = success ? "Success" : "Failed",
@@ -279,15 +239,11 @@ namespace Zyra.LantimeServiceApp.Services
             await _dbContext.SaveChangesAsync();
         }
 
-        private static void Log(PerformContext? context, string message)
+        private static void Log(
+            PerformContext? context,
+            string message)
         {
             context?.WriteLine(ConsoleTextColor.Cyan, message);
         }
-
-        private sealed record ExtraTimeCandidate(
-            int EmployeeId,
-            EmployeeMapping Employee,
-            DateTime ShiftEnd,
-            bool IsOvernight);
     }
 }
