@@ -13,7 +13,7 @@ namespace Zyra.LantimeServiceApp.Services
     public sealed class AttendanceSyncService : IAttendanceSyncService
     {
         private readonly AttendanceDbContext _dbContext;
-        private readonly IAttendanceDbService _attendanceDbService;
+        private readonly IAttendanceProvider _attendanceProvider;
         private readonly IAttendanceApiService _attendanceApiService;
         private readonly IAttendanceLogService _attendanceLogService;
         private readonly IShiftService _shiftService;
@@ -21,14 +21,14 @@ namespace Zyra.LantimeServiceApp.Services
 
         public AttendanceSyncService(
             AttendanceDbContext dbContext,
-            IAttendanceDbService attendanceDbService,
+            IAttendanceProvider attendanceProvider,
             IAttendanceApiService attendanceApiService,
             IAttendanceLogService attendanceLogService,
             IShiftService shiftService,
             ILogger<AttendanceSyncService> logger)
         {
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
-            _attendanceDbService = attendanceDbService ?? throw new ArgumentNullException(nameof(attendanceDbService));
+            _attendanceProvider = attendanceProvider ?? throw new ArgumentNullException(nameof(attendanceProvider));
             _attendanceApiService = attendanceApiService ?? throw new ArgumentNullException(nameof(attendanceApiService));
             _attendanceLogService = attendanceLogService ?? throw new ArgumentNullException(nameof(attendanceLogService));
             _shiftService = shiftService ?? throw new ArgumentNullException(nameof(shiftService));
@@ -49,20 +49,25 @@ namespace Zyra.LantimeServiceApp.Services
         {
             try
             {
-                var syncTime = DateTime.Today;
+                var today = DateTime.Today;
 
-                Log(context,
+                Log(
+                    context,
                     $"Employee attendance {(checkout ? "check-out" : "check-in")} sync started at {DateTime.Now}");
 
-                var records = await _attendanceDbService.GetAttendanceAsync(syncTime);
+                // Raw punches are required because MIN/MAX grouped by calendar day
+                // cannot correctly identify punches for overnight shifts.
+                var punches = await _attendanceProvider.GetPunchesAsync(
+                    today.AddDays(-1),
+                    today.AddDays(2));
 
-                if (records == null || records.Count == 0)
+                if (punches.Count == 0)
                 {
-                    Log(context, "No biometric attendance records found.", ConsoleTextColor.Cyan);
+                    Log(context, "No biometric punches found.", ConsoleTextColor.Cyan);
                     return;
                 }
 
-                var biometricIds = records
+                var biometricIds = punches
                     .Select(x => x.EmployeeCode)
                     .Where(x => !string.IsNullOrWhiteSpace(x))
                     .Distinct()
@@ -77,25 +82,55 @@ namespace Zyra.LantimeServiceApp.Services
 
                 var policyMap = await GetEmployeeAttendancePoliciesAsync(employeeIds);
 
-                foreach (var record in records)
+                foreach (var employee in employeeMap.Values)
                 {
                     try
                     {
+                        if (!policyMap.TryGetValue(employee.UserId, out var policy))
+                        {
+                            Log(
+                                context,
+                                $"{(checkout ? "Check-out" : "Check-in")} skipped for {employee.EmployeeName}. " +
+                                "No attendance policy configured.");
+                            continue;
+                        }
+
+                        var employeePunches = punches
+                            .Where(x => x.EmployeeCode == employee.BiometricUserId)
+                            .Select(x => x.CheckTime)
+                            .Distinct()
+                            .OrderBy(x => x)
+                            .ToList();
+
                         if (checkout)
-                            await ProcessCheckOutRecordAsync(record, employeeMap, policyMap, context);
+                        {
+                            await ProcessCheckOutAsync(
+                                employee,
+                                policy,
+                                employeePunches,
+                                today,
+                                context);
+                        }
                         else
-                            await ProcessCheckInRecordAsync(record, employeeMap, policyMap, context);
+                        {
+                            await ProcessCheckInAsync(
+                                employee,
+                                policy,
+                                employeePunches,
+                                today,
+                                context);
+                        }
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(
                             ex,
-                            "Error processing attendance for {EmployeeName}",
-                            record.EmployeeName);
+                            "Error processing attendance for Employee {EmployeeName}",
+                            employee.EmployeeName);
 
                         Log(
                             context,
-                            $"Error processing attendance for {record.EmployeeName}: {ex.Message}",
+                            $"Error processing attendance for {employee.EmployeeName}: {ex.Message}",
                             ConsoleTextColor.Red);
                     }
                 }
@@ -111,136 +146,134 @@ namespace Zyra.LantimeServiceApp.Services
             }
         }
 
-        private async Task ProcessCheckInRecordAsync(
-            AttendanceDto record,
-            Dictionary<string, EmployeeMapperDto> employeeMap,
-            Dictionary<int, EmployeeAttendancePolicy> policyMap,
+        private async Task ProcessCheckInAsync(
+            EmployeeMapperDto employee,
+            EmployeeAttendancePolicy policy,
+            IReadOnlyCollection<DateTime> punches,
+            DateTime today,
             PerformContext? context)
         {
-            if (!employeeMap.TryGetValue(record.EmployeeCode, out var employee))
+            foreach (var referenceDate in new[] { today, today.AddDays(-1) })
             {
-                Log(context,
-                    $"Biometric employee mapping not found for {record.EmployeeName}. " +
-                    $"Biometric code: {record.EmployeeCode}",
-                    ConsoleTextColor.Red);
-                return;
+                var shift = _shiftService.BuildShiftWindow(
+                    policy,
+                    referenceDate,
+                    employee.EmployeeName);
+
+                if (shift == null)
+                    continue;
+
+                var checkInTime = punches
+                    .Where(x => x >= shift.Start && x < shift.ShiftEnd)
+                    .OrderBy(x => x)
+                    .FirstOrDefault();
+
+                if (checkInTime == default)
+                    continue;
+
+                var alreadyProcessed = await _dbContext.AttendanceLogs
+                    .AsNoTracking()
+                    .AnyAsync(x =>
+                        x.EmployeeCode == employee.BiometricUserId &&
+                        x.IsProcessed &&
+                        x.AttendanceState == "checkin" &&
+                        x.CheckTime == checkInTime);
+
+                if (alreadyProcessed)
+                    continue;
+
+                var request = new AttendanceAPIDto
+                {
+                    employee_code = employee.EmployeeCode,
+                    type = "checkin",
+                    date_time = checkInTime
+                };
+
+                var success = await _attendanceApiService.SendAsync(request);
+
+                await _attendanceLogService.LogAsync(
+                    employee.BiometricUserId,
+                    checkInTime,
+                    success,
+                    "checkin");
+
+                Log(
+                    context,
+                    $"Biometric check-in {(success ? "updated successfully" : "update failed")} " +
+                    $"for {employee.EmployeeName} at {checkInTime:dd-MM-yyyy HH:mm:ss}",
+                    success ? ConsoleTextColor.Green : ConsoleTextColor.Red);
+
+                if (success)
+                    return;
             }
-
-            if (!policyMap.TryGetValue(employee.UserId, out var policy))
-            {
-                Log(context,
-                    $"Check-in skipped for {record.EmployeeName}. No attendance policy configured.");
-                return;
-            }
-
-            var shift = _shiftService.BuildShiftWindow(
-                policy,
-                record.CheckInTime,
-                record.EmployeeName);
-
-            if (shift == null || record.CheckInTime < shift.Start || record.CheckInTime > shift.End)
-            {
-                Log(context,
-                    $"Check-in skipped for {record.EmployeeName}. " +
-                    $"Check-in Time: {record.CheckInTime:dd-MM-yyyy HH:mm:ss}",
-                    ConsoleTextColor.Yellow);
-                return;
-            }
-
-            var alreadyCheckedIn = await _dbContext.AttendanceLogs
-                .AsNoTracking()
-                .AnyAsync(x =>
-                    x.EmployeeCode == employee.EmployeeCode &&
-                    x.Status == "Success" &&
-                    x.CheckTime >= shift.Start &&
-                    x.CheckTime <= shift.End);
-
-            if (alreadyCheckedIn)
-            {
-                Log(context,
-                    $"Check-in skipped for {record.EmployeeName}. Employee has already checked in successfully.");
-                return;
-            }
-
-            var request = new AttendanceAPIDto
-            {
-                employee_code = employee.EmployeeCode,
-                type = "checkin",
-                date_time = record.CheckInTime
-            };
-
-            var success = await _attendanceApiService.SendAsync(request);
-
-            await _attendanceLogService.LogAsync(
-                record.EmployeeCode,
-                request.date_time,
-                success,
-                request.type ?? "checkin");
-
-            Log(
-                context,
-                $"Biometric check-in {(success ? "updated successfully" : "update failed")} for {record.EmployeeName}",
-                success ? ConsoleTextColor.Green : ConsoleTextColor.Red);
         }
 
-        private async Task ProcessCheckOutRecordAsync(
-            AttendanceDto record,
-            Dictionary<string, EmployeeMapperDto> employeeMap,
-            Dictionary<int, EmployeeAttendancePolicy> policyMap,
+        private async Task ProcessCheckOutAsync(
+            EmployeeMapperDto employee,
+            EmployeeAttendancePolicy policy,
+            IReadOnlyCollection<DateTime> punches,
+            DateTime today,
             PerformContext? context)
         {
-            if (!employeeMap.TryGetValue(record.EmployeeCode, out var employee))
+            var candidateCheckouts = new List<(ShiftWindow Shift, DateTime CheckOutTime)>();
+
+            foreach (var referenceDate in new[] { today, today.AddDays(-1) })
             {
-                Log(context,
-                    $"Biometric employee mapping not found for {record.EmployeeName}. " +
-                    $"Biometric code: {record.EmployeeCode}");
-                return;
+                var shift = _shiftService.BuildShiftWindow(
+                    policy,
+                    referenceDate,
+                    employee.EmployeeName);
+
+                if (shift == null)
+                    continue;
+
+                var checkOutTime = punches
+                    .Where(x => x >= shift.ShiftEnd && x <= shift.End)
+                    .OrderByDescending(x => x)
+                    .FirstOrDefault();
+
+                if (checkOutTime != default)
+                    candidateCheckouts.Add((shift, checkOutTime));
             }
 
-            if (!policyMap.TryGetValue(employee.UserId, out var policy))
-            {
-                Log(context,
-                    $"Check-out skipped for {record.EmployeeName}. No attendance policy configured.");
-                return;
-            }
+            var candidate = candidateCheckouts
+                .OrderByDescending(x => x.CheckOutTime)
+                .FirstOrDefault();
 
-            if (record.CheckOutTime == DateTime.MinValue)
+            if (candidate.CheckOutTime == default)
                 return;
 
-            var shift = _shiftService.BuildShiftWindow(
-                policy,
-                record.CheckOutTime,
-                record.EmployeeName);
+            var alreadyProcessed = await _dbContext.AttendanceLogs
+                .AsNoTracking()
+                .AnyAsync(x =>
+                    x.EmployeeCode == employee.BiometricUserId &&
+                    x.IsProcessed &&
+                    (x.AttendanceState == "checkout" ||
+                     x.AttendanceState == "checkOut") &&
+                    x.CheckTime == candidate.CheckOutTime);
 
-            if (shift == null ||
-                record.CheckOutTime < shift.ShiftEnd ||
-                record.CheckOutTime > shift.End)
-            {
-                Log(context,
-                    $"Check-out skipped for {record.EmployeeName}. " +
-                    $"Check-out Time: {record.CheckOutTime:dd-MM-yyyy HH:mm:ss}",
-                    ConsoleTextColor.Yellow);
+            if (alreadyProcessed)
                 return;
-            }
 
             var request = new AttendanceAPIDto
             {
                 employee_code = employee.EmployeeCode,
                 type = "checkOut",
-                date_time = record.CheckOutTime
+                date_time = candidate.CheckOutTime
             };
 
             var success = await _attendanceApiService.SendAsync(request);
 
             await _attendanceLogService.LogAsync(
-                record.EmployeeCode,
-                request.date_time,
+                employee.BiometricUserId,
+                candidate.CheckOutTime,
                 success,
-                request.type ?? "checkOut");
+                "checkout");
 
             Log(
                 context,
-                $"Biometric check-out {(success ? "updated successfully" : "update failed")} for {record.EmployeeName}",
+                $"Biometric check-out {(success ? "updated successfully" : "update failed")} " +
+                $"for {employee.EmployeeName} at {candidate.CheckOutTime:dd-MM-yyyy HH:mm:ss}",
                 success ? ConsoleTextColor.Green : ConsoleTextColor.Red);
         }
 
