@@ -1,8 +1,3 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.Models;
@@ -23,9 +18,6 @@ namespace Zyra.LantimeServiceApp.JobService
             _logger = logger;
         }
 
-        // -------------------------------
-        // MAIN METHOD (USED BY JOBS)
-        // -------------------------------
         public async Task<List<AttendanceDto>> GetAttendanceAsync(DateTime fromDate)
         {
             try
@@ -38,21 +30,18 @@ namespace Zyra.LantimeServiceApp.JobService
                     return new List<AttendanceDto>();
                 }
 
-                // -------------------------------
-                // NORMALIZATION LAYER
-                // -------------------------------
                 var cleaned = data
                     .Where(x => !string.IsNullOrEmpty(x.EmployeeCode))
                     .Select(x =>
                     {
-                        // Safety normalization
                         x.EmployeeName ??= "Unknown";
-
                         return x;
                     })
                     .ToList();
 
-                _logger.LogInformation("AttendanceProvider returned {Count} records", cleaned.Count);
+                _logger.LogInformation(
+                    "AttendanceProvider returned {Count} records",
+                    cleaned.Count);
 
                 return cleaned;
             }
@@ -63,19 +52,37 @@ namespace Zyra.LantimeServiceApp.JobService
             }
         }
 
-        // -------------------------------
-        // OPTIONAL: LAST PUNCH DATA
-        // -------------------------------
+        public async Task<List<BiometricPunch>> GetPunchesAsync(
+            DateTime fromDate,
+            DateTime toDate)
+        {
+            try
+            {
+                var data = await _dbService.GetPunchesAsync(fromDate, toDate);
+
+                _logger.LogInformation(
+                    "AttendanceProvider returned {Count} biometric punches between {From} and {To}",
+                    data.Count,
+                    fromDate,
+                    toDate);
+
+                return data;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Error in AttendanceProvider.GetPunchesAsync");
+                throw;
+            }
+        }
+
         public async Task<List<EmployeeMapping>> GetLastPunchDataAsync()
         {
             try
             {
                 var data = await _dbService.GetLastPunchTime();
-
-                if (data == null)
-                    return new List<EmployeeMapping>();
-
-                return data;
+                return data ?? new List<EmployeeMapping>();
             }
             catch (Exception ex)
             {
@@ -84,19 +91,12 @@ namespace Zyra.LantimeServiceApp.JobService
             }
         }
 
-        // -------------------------------
-        // OPTIONAL: NEW EMPLOYEES
-        // -------------------------------
         public async Task<List<EmployeeMapping>> GetNewEmployeesAsync()
         {
             try
             {
                 var data = await _dbService.GetNewEmployees();
-
-                if (data == null)
-                    return new List<EmployeeMapping>();
-
-                return data;
+                return data ?? new List<EmployeeMapping>();
             }
             catch (Exception ex)
             {
