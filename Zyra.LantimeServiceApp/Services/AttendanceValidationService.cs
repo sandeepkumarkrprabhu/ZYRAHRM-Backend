@@ -45,8 +45,9 @@ namespace Zyra.LantimeServiceApp.Services
             var alreadyCheckedIn = await _dbContext.AttendanceLogs
                 .AsNoTracking()
                 .AnyAsync(x =>
-                    x.EmployeeCode == employee.EmployeeCode &&
+                    x.EmployeeCode == employee.BiometricUserId &&
                     x.Status == "Success" &&
+                    x.AttendanceState == "checkin" &&
                     x.CheckTime >= shift.Start &&
                     x.CheckTime <= shift.End);
 
