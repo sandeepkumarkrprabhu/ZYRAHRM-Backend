@@ -33,3 +33,8 @@ Thumbs.db
 
 # VS Code
 .vscode/
+
+# Application configuration containing secrets
+appsettings.json
+appsettings.*.json
+!appsettings.example.json
