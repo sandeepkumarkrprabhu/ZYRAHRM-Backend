@@ -79,7 +79,11 @@ namespace Zyra.LantimeServiceApp.JobService
                 // -------------------------------
                 // STEP 4: SAVE DB LOG
                 // -------------------------------
-                await _logService.LogAsync(attendance, result, request.type ?? "");
+                await _logService.LogAsync(
+                    attendance.EmployeeCode,
+                    request.date_time,
+                    result,
+                    request.type ?? "");
             }
             catch (Exception ex)
             {
