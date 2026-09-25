@@ -237,6 +237,11 @@ namespace Zyra.LantimeServiceApp.JobService
                 var oneHourAgo = now.AddHours(-1);
                 var lastSync = _jobService.GetLastSyncTime();
 
+                // Evaluate overtime before applying any automatic checkout.
+                // This is important for employees whose last punch is after
+                // the scheduled shift end.
+                await _extraTimeEvaluationService.EvaluateAsync(now, context);
+
                 _logger.LogInformation(
                     "AutoCheckoutJob started at {Time}", now);
 
@@ -420,7 +425,10 @@ namespace Zyra.LantimeServiceApp.JobService
                 .ToListAsync();
 
             var latestCheckout = attendanceLogs
-                .Where(x => x.AttendanceState == "checkout")
+                 .Where(x =>
+                    x.AttendanceState == "checkout" ||
+                    x.AttendanceState == "Extra checkout" ||
+                    x.AttendanceState == "Auto checkout")
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
