@@ -62,6 +62,9 @@ builder.Services.AddOptions<BiometricSyncSettings>()
 builder.Services.Configure<AttendanceSettings>(
     builder.Configuration.GetSection("AttendanceSettings"));
 
+builder.Services.Configure<ExtraTimeEvaluationSettings>(
+    builder.Configuration.GetSection("ExtraTimeEvaluation"));
+
 builder.Services.Configure<HangfireSecurityOptions>(
     builder.Configuration.GetSection("HangfireSecurity"));
 
@@ -91,6 +94,7 @@ builder.Services.AddScoped<IAttendancePolicy, AttendancePolicy>();
 builder.Services.AddScoped<IAttendanceProcessor, AttendanceProcessor>();
 builder.Services.AddScoped<IAttendanceDbService, AttendanceDbService>();
 builder.Services.AddScoped<IAttendanceLogService, AttendanceLogService>();
+builder.Services.AddScoped<IExtraTimeEvaluationService, ExtraTimeEvaluationService>();
 builder.Services.AddScoped<IEmployeeSyncProcessor, EmployeeSyncProcessor>();
 builder.Services.AddScoped<IEmployeePunchProcessor, EmployeePunchProcessor>();
 
