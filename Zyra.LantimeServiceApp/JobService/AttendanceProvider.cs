@@ -30,20 +30,14 @@ namespace Zyra.LantimeServiceApp.JobService
                     return new List<AttendanceDto>();
                 }
 
-                var cleaned = data
-                    .Where(x => !string.IsNullOrEmpty(x.EmployeeCode))
+                return data
+                    .Where(x => !string.IsNullOrWhiteSpace(x.EmployeeCode))
                     .Select(x =>
                     {
                         x.EmployeeName ??= "Unknown";
                         return x;
                     })
                     .ToList();
-
-                _logger.LogInformation(
-                    "AttendanceProvider returned {Count} records",
-                    cleaned.Count);
-
-                return cleaned;
             }
             catch (Exception ex)
             {
@@ -58,21 +52,15 @@ namespace Zyra.LantimeServiceApp.JobService
         {
             try
             {
-                var data = await _dbService.GetPunchesAsync(fromDate, toDate);
-
-                _logger.LogInformation(
-                    "AttendanceProvider returned {Count} biometric punches between {From} and {To}",
-                    data.Count,
-                    fromDate,
-                    toDate);
-
-                return data;
+                return await _dbService.GetPunchesAsync(fromDate, toDate);
             }
             catch (Exception ex)
             {
                 _logger.LogError(
                     ex,
-                    "Error in AttendanceProvider.GetPunchesAsync");
+                    "Error fetching biometric punches between {FromDate} and {ToDate}",
+                    fromDate,
+                    toDate);
                 throw;
             }
         }
@@ -81,8 +69,8 @@ namespace Zyra.LantimeServiceApp.JobService
         {
             try
             {
-                var data = await _dbService.GetLastPunchTime();
-                return data ?? new List<EmployeeMapping>();
+                return await _dbService.GetLastPunchTime()
+                    ?? new List<EmployeeMapping>();
             }
             catch (Exception ex)
             {
@@ -95,8 +83,8 @@ namespace Zyra.LantimeServiceApp.JobService
         {
             try
             {
-                var data = await _dbService.GetNewEmployees();
-                return data ?? new List<EmployeeMapping>();
+                return await _dbService.GetNewEmployees()
+                    ?? new List<EmployeeMapping>();
             }
             catch (Exception ex)
             {
