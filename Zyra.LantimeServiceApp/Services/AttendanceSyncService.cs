@@ -48,14 +48,18 @@ namespace Zyra.LantimeServiceApp.Services
             {
                 var syncTime = DateTime.Today;
 
-                Log(context,
+                Log(
+                    context,
                     $"Employee attendance {(checkout ? "check-out" : "check-in")} sync started at {DateTime.Now}");
 
                 var records = await _attendanceDbService.GetAttendanceAsync(syncTime);
 
                 if (records == null || records.Count == 0)
                 {
-                    Log(context, "No biometric attendance records found.", ConsoleTextColor.Cyan);
+                    Log(
+                        context,
+                        "No biometric attendance records found.",
+                        ConsoleTextColor.Cyan);
                     return;
                 }
 
@@ -65,23 +69,37 @@ namespace Zyra.LantimeServiceApp.Services
                     .Distinct()
                     .ToList();
 
-                var employeeMap = await _employeeAttendanceService.GetEmployeeMappingsAsync(biometricIds);
+                var employeeMap =
+                    await _employeeAttendanceService.GetEmployeeMappingsAsync(biometricIds);
 
                 var employeeIds = employeeMap.Values
                     .Select(x => x.UserId)
                     .Distinct()
                     .ToList();
 
-                var policyMap = await _employeeAttendanceService.GetEmployeeAttendancePoliciesAsync(employeeIds);
+                var policyMap =
+                    await _employeeAttendanceService.GetEmployeeAttendancePoliciesAsync(employeeIds);
 
                 foreach (var record in records)
                 {
                     try
                     {
                         if (checkout)
-                            await ProcessCheckOutRecordAsync(record, employeeMap, policyMap, context);
+                        {
+                            await ProcessCheckOutRecordAsync(
+                                record,
+                                employeeMap,
+                                policyMap,
+                                context);
+                        }
                         else
-                            await ProcessCheckInRecordAsync(record, employeeMap, policyMap, context);
+                        {
+                            await ProcessCheckInRecordAsync(
+                                record,
+                                employeeMap,
+                                policyMap,
+                                context);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -116,7 +134,8 @@ namespace Zyra.LantimeServiceApp.Services
         {
             if (!employeeMap.TryGetValue(record.EmployeeCode, out var employee))
             {
-                Log(context,
+                Log(
+                    context,
                     $"Biometric employee mapping not found for {record.EmployeeName}. " +
                     $"Biometric code: {record.EmployeeCode}",
                     ConsoleTextColor.Red);
@@ -125,7 +144,8 @@ namespace Zyra.LantimeServiceApp.Services
 
             if (!policyMap.TryGetValue(employee.UserId, out var policy))
             {
-                Log(context,
+                Log(
+                    context,
                     $"Check-in skipped for {record.EmployeeName}. No attendance policy configured.");
                 return;
             }
@@ -154,9 +174,10 @@ namespace Zyra.LantimeServiceApp.Services
             var success = await _attendanceApiService.SendAsync(request);
 
             await _attendanceLogService.LogAsync(
-                record,
+                record.EmployeeCode,
+                request.date_time,
                 success,
-                request.type ?? "checkin");
+                "checkin");
 
             Log(
                 context,
@@ -172,15 +193,16 @@ namespace Zyra.LantimeServiceApp.Services
         {
             if (!employeeMap.TryGetValue(record.EmployeeCode, out var employee))
             {
-                Log(context,
-                    $"Biometric employee mapping not found for {record.EmployeeName}. " +
-                    $"Biometric code: {record.EmployeeCode}");
+                Log(
+                    context,
+                    $"Biometric employee mapping not found for {record.EmployeeName}");
                 return;
             }
 
             if (!policyMap.TryGetValue(employee.UserId, out var policy))
             {
-                Log(context,
+                Log(
+                    context,
                     $"Check-out skipped for {record.EmployeeName}. No attendance policy configured.");
                 return;
             }
@@ -209,9 +231,10 @@ namespace Zyra.LantimeServiceApp.Services
             var success = await _attendanceApiService.SendAsync(request);
 
             await _attendanceLogService.LogAsync(
-                record,
+                record.EmployeeCode,
+                request.date_time,
                 success,
-                request.type ?? "checkOut");
+                "checkout");
 
             Log(
                 context,
@@ -224,7 +247,10 @@ namespace Zyra.LantimeServiceApp.Services
             Log(context, message, ConsoleTextColor.Yellow);
         }
 
-        private void Log(PerformContext? context,string message, ConsoleTextColor color)
+        private void Log(
+            PerformContext? context,
+            string message,
+            ConsoleTextColor color)
         {
             _logger.LogInformation(message);
             context?.WriteLine(color, message);

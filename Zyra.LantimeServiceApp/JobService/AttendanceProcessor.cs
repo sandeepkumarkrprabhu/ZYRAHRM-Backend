@@ -1,4 +1,4 @@
-﻿using Hangfire.Console;
+using Hangfire.Console;
 using Hangfire.Server;
 using Microsoft.Extensions.Logging;
 using Zyra.LantimeServiceApp.Interfaces;
@@ -29,7 +29,8 @@ namespace Zyra.LantimeServiceApp.JobService
         public async Task ProcessAsync(
             EmployeeMapping employee,
             AttendanceDto attendance,
-            PerformContext context, TimeSpan timeSpan)
+            PerformContext context,
+            TimeSpan timeSpan)
         {
             try
             {
@@ -79,7 +80,13 @@ namespace Zyra.LantimeServiceApp.JobService
                 // -------------------------------
                 // STEP 4: SAVE DB LOG
                 // -------------------------------
-                await _logService.LogAsync(attendance, result, request.type ?? "");
+                // The policy has already selected the exact operation timestamp.
+                // Keep the logger free of business rules and record that timestamp directly.
+                await _logService.LogAsync(
+                    attendance.EmployeeCode,
+                    request.date_time,
+                    result,
+                    request.type ?? string.Empty);
             }
             catch (Exception ex)
             {
