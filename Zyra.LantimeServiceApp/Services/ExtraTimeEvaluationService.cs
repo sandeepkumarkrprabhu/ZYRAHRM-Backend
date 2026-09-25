@@ -183,48 +183,57 @@ namespace Zyra.LantimeServiceApp.Services
                 return;
             }
 
-            if (await HasExtraTimeAlreadyProcessedAsync(
-                    candidate.Employee.BiometricUserId,
-                    candidate.ShiftEnd,
-                    lastPunch))
-            {
-                Log(context,
-                    $"Extra time already processed for {candidate.Employee.EmployeeName}: " +
-                    $"{candidate.ShiftEnd:HH:mm} - {lastPunch:HH:mm}.");
-                return;
-            }
-
             var extraMinutes = (int)(lastPunch - candidate.ShiftEnd).TotalMinutes;
 
             if (extraMinutes <= 0)
                 return;
 
-            var checkInSuccess = await _apiService.SendAsync(
-                new AttendanceAPIDto
-                {
-                    employee_code = candidate.Employee.HRMEmployeeCode,
-                    type = "checkin",
-                    date_time = candidate.ShiftEnd
-                });
+            // Idempotency is checked independently for check-in and check-out.
+            // If checkout fails, the next 30-minute run must not create another
+            // check-in before retrying the checkout.
+            var hasExtraCheckIn =
+                await HasExtraLogAsync(
+                    candidate.Employee.BiometricUserId,
+                    candidate.ShiftEnd,
+                    ExtraCheckInState);
 
-            if (!checkInSuccess)
+            if (!hasExtraCheckIn)
             {
+                var checkInSuccess = await _apiService.SendAsync(
+                    new AttendanceAPIDto
+                    {
+                        employee_code = candidate.Employee.HRMEmployeeCode,
+                        type = "checkin",
+                        date_time = candidate.ShiftEnd
+                    });
+
                 await SaveLogAsync(
                     candidate.Employee.BiometricUserId,
                     candidate.ShiftEnd,
                     ExtraCheckInState,
-                    false,
-                    "Failed to create extra-time check-in.");
+                    checkInSuccess,
+                    checkInSuccess
+                        ? $"Extra time check-in. Extra minutes: {extraMinutes}."
+                        : "Failed to create extra-time check-in.");
 
-                return;
+                if (!checkInSuccess)
+                    return;
             }
 
-            await SaveLogAsync(
-                candidate.Employee.BiometricUserId,
-                candidate.ShiftEnd,
-                ExtraCheckInState,
-                true,
-                $"Extra time check-in. Extra minutes: {extraMinutes}.");
+            var hasExtraCheckOut =
+                await HasExtraLogAsync(
+                    candidate.Employee.BiometricUserId,
+                    lastPunch,
+                    ExtraCheckOutState);
+
+            if (hasExtraCheckOut)
+            {
+                Log(
+                    context,
+                    $"Extra time already processed for {candidate.Employee.EmployeeName}: " +
+                    $"{candidate.ShiftEnd:HH:mm} - {lastPunch:HH:mm}.");
+                return;
+            }
 
             var checkOutSuccess = await _apiService.SendAsync(
                 new AttendanceAPIDto
@@ -259,20 +268,18 @@ namespace Zyra.LantimeServiceApp.Services
                 yield return attendance.CheckOutTime;
         }
 
-        private async Task<bool> HasExtraTimeAlreadyProcessedAsync(
+        private async Task<bool> HasExtraLogAsync(
             string biometricUserId,
-            DateTime extraStart,
-            DateTime extraEnd)
+            DateTime checkTime,
+            string state)
         {
             return await _dbContext.AttendanceLogs
                 .AsNoTracking()
                 .AnyAsync(x =>
                     x.EmployeeCode == biometricUserId &&
                     x.IsProcessed &&
-                    x.AttendanceState == ExtraCheckOutState &&
-                    x.CheckTime == extraEnd &&
-                    x.ErrorMessage != null &&
-                    x.ErrorMessage.Contains("Extra time checkout"));
+                    x.AttendanceState == state &&
+                    x.CheckTime == checkTime);
         }
 
         private async Task SaveLogAsync(
