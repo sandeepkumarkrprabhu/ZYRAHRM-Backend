@@ -81,61 +81,74 @@ namespace Zyra.LantimeServiceApp.Services
             if (assignments.Count == 0)
                 return;
 
-            foreach (var assignment in assignments)
-            {
-                var employee = assignment.EmployeeMapping;
-
-                if (employee == null ||
-                    string.IsNullOrWhiteSpace(employee.BiometricUserId) ||
-                    string.IsNullOrWhiteSpace(employee.HRMEmployeeCode))
+            var candidates = assignments
+                .Select(assignment =>
                 {
-                    continue;
-                }
+                    var employee = assignment.EmployeeMapping;
 
-                var shift = _shiftService.BuildShiftWindow(
-                    assignment,
-                    workDate.AddHours(12),
-                    employee.EmployeeName ?? "Unknown");
+                    if (employee == null ||
+                        string.IsNullOrWhiteSpace(employee.BiometricUserId) ||
+                        string.IsNullOrWhiteSpace(employee.HRMEmployeeCode))
+                    {
+                        return null;
+                    }
 
-                if (shift == null)
-                    continue;
+                    var shift = _shiftService.BuildShiftWindow(
+                        assignment,
+                        workDate.AddHours(12),
+                        employee.EmployeeName ?? "Unknown");
 
-                var delayMinutes = shift.IsOvernight
-                    ? _settings.OvernightShiftEvaluationDelayMinutes
-                    : _settings.DayShiftEvaluationDelayMinutes;
+                    if (shift == null)
+                        return null;
 
-                if (shift.ShiftEnd.AddMinutes(delayMinutes) > evaluationTime)
-                    continue;
+                    var delayMinutes = shift.IsOvernight
+                        ? _settings.OvernightShiftEvaluationDelayMinutes
+                        : _settings.DayShiftEvaluationDelayMinutes;
 
+                    if (shift.ShiftEnd.AddMinutes(delayMinutes) > evaluationTime)
+                        return null;
+
+                    return new ExtraTimeCandidate(
+                        employee,
+                        shift.ShiftEnd);
+                })
+                .Where(x => x != null)
+                .Select(x => x!)
+                .ToList();
+
+            if (candidates.Count == 0)
+                return;
+
+            // One biometric query for the whole work-date batch instead of
+            // one query per employee.
+            var from = candidates.Min(x => x.ShiftEnd);
+            var to = candidates.Max(x =>
+                x.ShiftEnd.AddMinutes(_settings.MaximumOvertimeMinutes));
+
+            var punches = await _attendanceProvider.GetPunchesAsync(from, to);
+
+            foreach (var candidate in candidates)
+            {
                 await EvaluateEmployeeAsync(
-                    employee,
-                    shift.ShiftEnd,
+                    candidate,
+                    punches,
                     evaluationTime,
                     context);
             }
         }
 
         private async Task EvaluateEmployeeAsync(
-            EmployeeMapping employee,
-            DateTime shiftEnd,
+            ExtraTimeCandidate candidate,
+            IEnumerable<BiometricPunch> punches,
             DateTime evaluationTime,
             PerformContext? context)
         {
-            var from = shiftEnd;
-            var to = shiftEnd.AddMinutes(_settings.MaximumOvertimeMinutes);
-
-            // Pull raw punches, not the min/max daily AttendanceDto. This is
-            // essential for overnight shifts and for finding the actual last
-            // punch after the scheduled shift end.
-            var punches = await _attendanceProvider.GetPunchesAsync(from, to);
-
             var employeePunches = punches
-                .Where(x => x.EmployeeCode == employee.BiometricUserId)
-                .Select(x => x.CheckTime)
-                .ToList();
+                .Where(x => x.EmployeeCode == candidate.Employee.BiometricUserId)
+                .Select(x => x.CheckTime);
 
             var interval = _calculator.Calculate(
-                shiftEnd,
+                candidate.ShiftEnd,
                 employeePunches,
                 evaluationTime,
                 _settings.MaximumOvertimeMinutes);
@@ -144,7 +157,7 @@ namespace Zyra.LantimeServiceApp.Services
                 return;
 
             var checkInLogged = await HasSuccessfulExtraLogAsync(
-                employee.BiometricUserId!,
+                candidate.Employee.BiometricUserId!,
                 interval.CheckInTime,
                 ExtraCheckInState);
 
@@ -153,13 +166,13 @@ namespace Zyra.LantimeServiceApp.Services
                 var success = await _attendanceApiService.SendAsync(
                     new AttendanceAPIDto
                     {
-                        employee_code = employee.HRMEmployeeCode,
+                        employee_code = candidate.Employee.HRMEmployeeCode,
                         type = "checkin",
                         date_time = interval.CheckInTime
                     });
 
                 await SaveLogAsync(
-                    employee.BiometricUserId!,
+                    candidate.Employee.BiometricUserId!,
                     interval.CheckInTime,
                     ExtraCheckInState,
                     success,
@@ -172,7 +185,7 @@ namespace Zyra.LantimeServiceApp.Services
             }
 
             var checkoutLogged = await HasSuccessfulExtraLogAsync(
-                employee.BiometricUserId!,
+                candidate.Employee.BiometricUserId!,
                 interval.CheckOutTime,
                 ExtraCheckOutState);
 
@@ -181,13 +194,13 @@ namespace Zyra.LantimeServiceApp.Services
                 var success = await _attendanceApiService.SendAsync(
                     new AttendanceAPIDto
                     {
-                        employee_code = employee.HRMEmployeeCode,
+                        employee_code = candidate.Employee.HRMEmployeeCode,
                         type = "checkout",
                         date_time = interval.CheckOutTime
                     });
 
                 await SaveLogAsync(
-                    employee.BiometricUserId!,
+                    candidate.Employee.BiometricUserId!,
                     interval.CheckOutTime,
                     ExtraCheckOutState,
                     success,
@@ -198,7 +211,7 @@ namespace Zyra.LantimeServiceApp.Services
 
             Log(
                 context,
-                $"Extra time processed for {employee.EmployeeName}: " +
+                $"Extra time processed for {candidate.Employee.EmployeeName}: " +
                 $"{interval.CheckInTime:dd-MM-yyyy HH:mm} - " +
                 $"{interval.CheckOutTime:dd-MM-yyyy HH:mm} " +
                 $"({interval.DurationMinutes} minutes).");
