@@ -1,17 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Zyra.LantimeServiceApp.Models;
+using System;
 
 namespace Zyra.LantimeServiceApp.Interfaces
 {
     public interface IAttendanceLogService
     {
         /// <summary>
-        /// Logs attendance processing result into database
+        /// Logs an attendance processing result using the exact employee code,
+        /// timestamp, and attendance operation supplied by the caller.
         /// </summary>
-        Task LogAsync(AttendanceDto attendance, bool isSuccess, string attendanceState);
+        Task LogAsync(
+            string employeeCode,
+            DateTime checkTime,
+            bool isSuccess,
+            string attendanceState);
     }
 }
