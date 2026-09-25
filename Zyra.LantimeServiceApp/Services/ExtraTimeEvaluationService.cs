@@ -21,7 +21,6 @@ namespace Zyra.LantimeServiceApp.Services
         private readonly IShiftService _shiftService;
         private readonly IExtraTimeCalculator _calculator;
         private readonly ExtraTimeEvaluationSettings _settings;
-        private readonly ILogger<ExtraTimeEvaluationService> _logger;
 
         public ExtraTimeEvaluationService(
             AttendanceDbContext dbContext,
@@ -29,8 +28,7 @@ namespace Zyra.LantimeServiceApp.Services
             IAttendanceApiService attendanceApiService,
             IShiftService shiftService,
             IExtraTimeCalculator calculator,
-            IOptions<ExtraTimeEvaluationSettings> options,
-            ILogger<ExtraTimeEvaluationService> logger)
+            IOptions<ExtraTimeEvaluationSettings> options)
         {
             _dbContext = dbContext;
             _attendanceProvider = attendanceProvider;
@@ -38,7 +36,6 @@ namespace Zyra.LantimeServiceApp.Services
             _shiftService = shiftService;
             _calculator = calculator;
             _settings = options.Value;
-            _logger = logger;
         }
 
         public async Task EvaluateAsync(
@@ -258,5 +255,9 @@ namespace Zyra.LantimeServiceApp.Services
         {
             context?.WriteLine(ConsoleTextColor.Cyan, message);
         }
+
+        private sealed record ExtraTimeCandidate(
+            EmployeeMapping Employee,
+            DateTime ShiftEnd);
     }
 }
