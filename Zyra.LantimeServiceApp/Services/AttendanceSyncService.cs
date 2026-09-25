@@ -158,7 +158,7 @@ namespace Zyra.LantimeServiceApp.Services
                 // Use noon so ShiftService resolves the calendar date correctly
                 // for overnight shifts instead of treating midnight as the previous shift date.
                 var shiftReferenceTime = referenceDate.AddHours(12);
-            {
+
                 var shift = _shiftService.BuildShiftWindow(
                     policy,
                     shiftReferenceTime,
@@ -223,9 +223,13 @@ namespace Zyra.LantimeServiceApp.Services
 
             foreach (var referenceDate in new[] { today, today.AddDays(-1) })
             {
+                // Use noon so overnight shifts are resolved against the intended
+                // calendar date rather than midnight being treated as the prior shift date.
+                var shiftReferenceTime = referenceDate.AddHours(12);
+
                 var shift = _shiftService.BuildShiftWindow(
                     policy,
-                    referenceDate,
+                    shiftReferenceTime,
                     employee.EmployeeName);
 
                 if (shift == null)
