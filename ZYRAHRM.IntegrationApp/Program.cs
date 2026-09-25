@@ -97,6 +97,7 @@ builder.Services.AddScoped<IAttendanceLogService, AttendanceLogService>();
 builder.Services.AddScoped<IEmployeeAttendanceService, EmployeeAttendanceService>();
 builder.Services.AddScoped<IAttendanceSyncService, AttendanceSyncService>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
+builder.Services.AddScoped<IAttendanceValidationService, AttendanceValidationService>();
 builder.Services.AddScoped<IExtraTimeEvaluationService, ExtraTimeEvaluationService>();
 builder.Services.AddScoped<IEmployeeSyncProcessor, EmployeeSyncProcessor>();
 builder.Services.AddScoped<IEmployeePunchProcessor, EmployeePunchProcessor>();
