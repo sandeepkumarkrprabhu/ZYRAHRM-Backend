@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.Models;
 using ZYRA.Attendance.Infrastructure;
@@ -32,8 +32,7 @@ namespace Zyra.LantimeServiceApp.JobService
                     return;
                 }
 
-                var checkTime = ResolveCheckTime(attendance);
-                var checkinStatus = IsCheckIn(checkTime);
+                var checkTime = ResolveCheckTime(attendance, attendanceState);
 
                 var log = new AttendanceLog
                 {
@@ -43,57 +42,53 @@ namespace Zyra.LantimeServiceApp.JobService
                     Status = isSuccess ? "Success" : "Failed",
                     AttendanceState = attendanceState ?? string.Empty,
                     CheckTime = checkTime,
-                    ErrorMessage = (checkinStatus == true ? "CheckIn" : "CheckOut")
+                    ErrorMessage = isSuccess ? null : $"Failed to process {attendanceState}."
                 };
 
                 _context.AttendanceLogs.Add(log);
                 await _context.SaveChangesAsync();
 
                 _logger.LogInformation(
-                    "Attendance log saved for Employee {EmployeeCode} | Status: {Status}",
+                    "Attendance log saved for Employee {EmployeeCode} | State: {State} | Status: {Status}",
                     attendance.EmployeeCode,
+                    attendanceState,
                     log.Status);
             }
             catch (Exception ex)
             {
-                // IMPORTANT:
-                // Logging failure should NOT break main job
-                _logger.LogError(ex,
+                // Logging failure should not break the main attendance job.
+                _logger.LogError(
+                    ex,
                     "Failed to save attendance log for Employee {EmployeeCode}",
                     attendance?.EmployeeCode);
             }
         }
 
-        // -------------------------------------------------
-        // SAFE CHECK TIME RESOLUTION
-        // -------------------------------------------------
-        private DateTime ResolveCheckTime(AttendanceDto attendance)
+        private static DateTime ResolveCheckTime(
+            AttendanceDto attendance,
+            string attendanceState)
         {
-            var time = DateTime.Now.TimeOfDay;
+            var normalizedState = attendanceState?.Trim().ToLowerInvariant();
 
-            // Same logic you had earlier but isolated cleanly
-            if (time <= new TimeSpan(15, 0, 0))
+            return normalizedState switch
             {
-                return attendance.CheckInTime != DateTime.MinValue
-                    ? attendance.CheckInTime
-                    : DateTime.Now;
-            }
+                "checkin" or "extra checkin" =>
+                    attendance.CheckInTime != DateTime.MinValue
+                        ? attendance.CheckInTime
+                        : DateTime.Now,
 
-            return attendance.CheckOutTime != DateTime.MinValue
-                ? attendance.CheckOutTime
-                : DateTime.Now;
-        }
+                "checkout" or "extra checkout" or "auto checkout" =>
+                    attendance.CheckOutTime != DateTime.MinValue
+                        ? attendance.CheckOutTime
+                        : DateTime.Now,
 
-        private bool IsCheckIn(DateTime bioEntryTime)
-        {
-            var punchTime = bioEntryTime;
-            // Same logic you had earlier but isolated cleanly
-            if (punchTime.TimeOfDay <= new TimeSpan(15, 0, 0))
-            {
-                return true;
-            }
-
-            return false;
+                _ =>
+                    attendance.CheckInTime != DateTime.MinValue
+                        ? attendance.CheckInTime
+                        : attendance.CheckOutTime != DateTime.MinValue
+                            ? attendance.CheckOutTime
+                            : DateTime.Now
+            };
         }
     }
 }
