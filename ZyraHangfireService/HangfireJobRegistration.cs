@@ -17,9 +17,10 @@ namespace ZyraHangfireService
         {
             var settings = provider.GetRequiredService<IOptions<BiometricSyncSettings>>().Value;
 
-            // Register is called with an explicit application scope from Program.cs.
-            // AttendanceDbContext remains Scoped and is resolved only from that scope.
-            var dbContext = provider.GetRequiredService<AttendanceDbContext>();
+            // AttendanceDbContext is scoped. Hangfire registration may receive the
+            // root application provider, so create a dedicated scope before resolving it.
+            using var scope = provider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<AttendanceDbContext>();
 
             // -------------------------------
             // ATTENDANCE SYNC JOB
