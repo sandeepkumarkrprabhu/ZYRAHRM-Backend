@@ -1,6 +1,8 @@
-﻿using Hangfire;
+using Hangfire;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using ZYRA.Attendance.Infrastructure;
 using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.Models;
 
@@ -8,9 +10,13 @@ namespace ZyraHangfireService
 {
     public static class HangfireJobRegistration
     {
+        private const string CompanyForceCheckoutEnabledSetting = "CompanyForceCheckoutEnabled";
+        private const string CompanyForceCheckoutJobId = "ProcessCompanyForceCheckoutJob";
+
         public static void Register(IServiceProvider provider, TimeZoneInfo istZone)
         {
             var settings = provider.GetRequiredService<IOptions<BiometricSyncSettings>>().Value;
+            var dbContext = provider.GetRequiredService<AttendanceDbContext>();
 
             // -------------------------------
             // ATTENDANCE SYNC JOB
@@ -33,17 +39,26 @@ namespace ZyraHangfireService
             // -------------------------------
             // COMPANY FORCE CHECKOUT JOB
             // -------------------------------
-            if (settings.CompanyForceCheckoutEnabled)
+            var enabledValue = dbContext.HRMSettings
+                .AsNoTracking()
+                .Where(x => x.SettingsName == CompanyForceCheckoutEnabledSetting)
+                .Select(x => x.SettingsValue)
+                .FirstOrDefault();
+
+            var companyForceCheckoutEnabled =
+                bool.TryParse(enabledValue, out var parsedEnabled) && parsedEnabled;
+
+            if (companyForceCheckoutEnabled)
             {
                 RecurringJob.AddOrUpdate<ICompanyForceCheckoutJob>(
-                    "ProcessCompanyForceCheckoutJob",
+                    CompanyForceCheckoutJobId,
                     x => x.Execute(null),
                     settings.CompanyForceCheckoutJobCron,
                     new RecurringJobOptions { TimeZone = istZone });
             }
             else
             {
-                RecurringJob.RemoveIfExists("ProcessCompanyForceCheckoutJob");
+                RecurringJob.RemoveIfExists(CompanyForceCheckoutJobId);
             }
 
             // -------------------------------
