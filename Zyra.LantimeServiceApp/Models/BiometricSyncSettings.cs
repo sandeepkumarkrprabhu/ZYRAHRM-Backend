@@ -1,4 +1,3 @@
-﻿
 namespace Zyra.LantimeServiceApp.Models
 {
     public class BiometricSyncSettings
@@ -6,8 +5,6 @@ namespace Zyra.LantimeServiceApp.Models
         public string AttendanceSyncJobCron { get; set; }
 
         public string AutoCheckoutJobCron { get; set; }
-
-        public bool CompanyForceCheckoutEnabled { get; set; } = false;
 
         public string CompanyForceCheckoutJobCron { get; set; } = "59 23 * * *";
 
