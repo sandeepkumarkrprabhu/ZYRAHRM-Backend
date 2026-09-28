@@ -104,6 +104,7 @@ builder.Services.AddScoped<IEmployeePunchProcessor, EmployeePunchProcessor>();
 
 builder.Services.AddScoped<ISyncAttendanceJob, JobSyncAttendanceJob>();
 builder.Services.AddScoped<IAutoCheckoutJob, JobAutoCheckoutJob>();
+builder.Services.AddScoped<ICompanyForceCheckoutJob, JobCompanyForceCheckout>();
 builder.Services.AddScoped<IDirectorAttendanceJob, JobDirectorAttendance>();
 builder.Services.AddScoped<IEmployeeSyncJob, JobEmployeeMasterSync>();
 builder.Services.AddScoped<IEmployeePunchSyncJob, JobEmployeeBioPunchTimeUpdate>();
