@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ZYRA.Attendance.Infrastructure;
 using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.Models;
+using Microsoft.Extensions.Logging;
 
 namespace Zyra.LantimeServiceApp.Services
 {
