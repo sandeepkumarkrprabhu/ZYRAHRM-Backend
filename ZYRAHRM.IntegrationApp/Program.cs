@@ -204,8 +204,12 @@ app.MapControllers();
 var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
 
 //Commented for testing the APIs 2907026
-// Register all Hangfire jobs in one place
-HangfireJobRegistration.Register(app.Services, istZone);
+// Register all Hangfire jobs inside an explicit DI scope.
+// HangfireJobRegistration resolves the scoped AttendanceDbContext from this scope.
+using (var hangfireRegistrationScope = app.Services.CreateScope())
+{
+    HangfireJobRegistration.Register(hangfireRegistrationScope.ServiceProvider, istZone);
+}
 
 app.MapGet("/", () => "Hangfire Service is running...");
 
