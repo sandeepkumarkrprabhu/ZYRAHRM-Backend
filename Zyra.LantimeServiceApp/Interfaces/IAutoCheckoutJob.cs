@@ -11,4 +11,9 @@ namespace Zyra.LantimeServiceApp.Interfaces
     {
         Task Execute(PerformContext context);
     }
+
+    public interface ICompanyForceCheckoutJob
+    {
+        Task Execute(PerformContext context);
+    }
 }
