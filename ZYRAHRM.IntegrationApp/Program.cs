@@ -71,7 +71,7 @@ builder.Services.Configure<HangfireSecurityOptions>(
 //builder.Services.AddDbContext<AttendanceDbContext>(options =>
 //    options.UseSqlServer(builder.Configuration.GetConnectionString("AttendanceDb")));
 
-builder.Services.AddDbContext<AttendanceDbContext>(options =>
+builder.Services.AddDbContextFactory<AttendanceDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("AttendanceDb"),
         b => b.MigrationsAssembly("ZYRA.Attendance.Infrastructure")
