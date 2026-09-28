@@ -11,7 +11,7 @@ namespace Zyra.LantimeServiceApp.Interfaces
             EmployeeAttendancePolicy policy,
             AttendanceDto attendance);
 
-        AttendanceValidationResult ValidateCheckOut(
+        Task<AttendanceValidationResult> ValidateCheckOutAsync(
             EmployeeMapperDto employee,
             EmployeeAttendancePolicy policy,
             AttendanceDto attendance);
