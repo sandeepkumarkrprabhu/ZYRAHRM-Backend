@@ -64,6 +64,47 @@ namespace Zyra.LantimeServiceApp.Services
                     );
         }
 
+        public async Task<DateTime?> GetLatestPunchAfterAsync(
+            string biometricUserId,
+            DateTime checkInTime,
+            DateTime upToTime)
+        {
+            const string query = @"
+                SELECT MAX(c.CheckTime) AS LatestPunchTime
+                FROM checkinout c
+                INNER JOIN userinfo u
+                    ON u.badgenumber = c.pin
+                WHERE u.badgenumber = @EmployeeCode
+                  AND c.CheckTime > @CheckInTime
+                  AND c.CheckTime <= @UpToTime";
+
+            var parameters = new[]
+            {
+                new SqlParameter("@EmployeeCode", SqlDbType.VarChar, 50)
+                {
+                    Value = biometricUserId
+                },
+                new SqlParameter("@CheckInTime", SqlDbType.DateTime)
+                {
+                    Value = checkInTime
+                },
+                new SqlParameter("@UpToTime", SqlDbType.DateTime)
+                {
+                    Value = upToTime
+                }
+            };
+
+            var records = await _dbService.ExecuteQueryAsync(
+                query,
+                reader => reader.IsDBNull(reader.GetOrdinal("LatestPunchTime"))
+                    ? (DateTime?)null
+                    : reader.GetDateTime(reader.GetOrdinal("LatestPunchTime")),
+                parameters,
+                CommandType.Text);
+
+            return records.FirstOrDefault();
+        }
+
         public async Task<List<EmployeeMapping>> GetNewEmployees()
         {
             var query = @"
