@@ -31,7 +31,19 @@ namespace ZYRAHRM.IntegrationApp.Controllers
                     "Fetching granted navigation menus for user {UserId}.",
                     userId);
 
-                var menus = await _navigationService.GetMenusByUserIdAsync(userId);
+                var authenticatedUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (!long.TryParse(authenticatedUserId, out var currentUserId))
+            {
+                return Unauthorized(new { message = "Invalid authenticated user." });
+            }
+
+            if (currentUserId != userId)
+            {
+                return Forbid();
+            }
+
+            var menus = await _navigationService.GetMenusByUserIdAsync(userId);
 
                 if (menus.Count == 0)
                 {
