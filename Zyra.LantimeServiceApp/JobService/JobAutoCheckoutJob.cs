@@ -401,50 +401,107 @@ namespace Zyra.LantimeServiceApp.JobService
             }
         }
 
-        private async Task ProcessEmployeeAutoCheckoutAsync(EmployeeMapping employee, AttendancePolicyMaster policy, DateTime policyAutoCheckoutTime, DateTime today, PerformContext context)
+        private async Task ProcessEmployeeAutoCheckoutAsync(
+            EmployeeMapping employee,
+            AttendancePolicyMaster policy,
+            DateTime policyAutoCheckoutTime,
+            DateTime today,
+            PerformContext context)
         {
-            if (string.IsNullOrWhiteSpace(employee.HRMEmployeeCode))
+            if (string.IsNullOrWhiteSpace(employee.HRMEmployeeCode) ||
+                string.IsNullOrWhiteSpace(employee.BiometricUserId))
                 return;
 
-            if (string.IsNullOrWhiteSpace(employee.BiometricUserId))
-                return;
-
-            // Get today's ZYRA attendance only for this employee
+            // Look at the ZYRA attendance logs for the current attendance date.
+            // A successful biometric checkout already synchronized to ZYRA means
+            // there is nothing left for this job to close.
             var attendanceLogs = await _dbContext.AttendanceLogs
+                .AsNoTracking()
                 .Where(x =>
                     x.EmployeeCode == employee.BiometricUserId &&
                     x.CheckTime >= today &&
                     x.CheckTime < today.AddDays(1) &&
-                    x.IsProcessed)
+                    x.IsProcessed &&
+                    x.Status == "Success")
                 .OrderByDescending(x => x.CheckTime)
                 .ToListAsync();
 
-            var latestCheckout = attendanceLogs
-                .Where(x => x.AttendanceState == "checkout")
+            var latestCheckIn = attendanceLogs
+                .Where(x => x.AttendanceState == "checkin")
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
-            // Already checked out
-            if (latestCheckout != null)
+            var latestCheckout = attendanceLogs
+                .Where(x =>
+                    x.AttendanceState == "checkout" ||
+                    x.AttendanceState == "Auto checkout")
+                .OrderByDescending(x => x.CheckTime)
+                .FirstOrDefault();
+
+            if (latestCheckout != null &&
+                (latestCheckIn == null || latestCheckout.CheckTime >= latestCheckIn.CheckTime))
             {
                 context.WriteLine(
                     ConsoleTextColor.Gray,
-                    $"{employee.EmployeeName} already checked out " +
-                    $"at {latestCheckout.CheckTime}");
+                    $"{employee.EmployeeName} already checked out at {latestCheckout.CheckTime}");
 
                 return;
             }
 
-            // ---------------------------------------------------------------
-            // No checkout found -> auto checkout using policy time
-            // ---------------------------------------------------------------
+            if (latestCheckIn == null)
+            {
+                context.WriteLine(
+                    ConsoleTextColor.Gray,
+                    $"Auto checkout skipped for {employee.EmployeeName}: no open check-in found.");
 
-            var result = await _apiService.SendAsync(
+                return;
+            }
+
+            // The policy time is only the point at which the employee becomes
+            // eligible for auto checkout. It is not automatically used as the
+            // final checkout when a later biometric punch exists.
+            var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
+                employee.BiometricUserId,
+                latestCheckIn.CheckTime,
+                DateTime.Now);
+
+            if (latestPunch.HasValue)
+            {
+                var result = await _apiService.SendAsync(
+                    new AttendanceAPIDto
+                    {
+                        employee_code = employee.HRMEmployeeCode,
+                        type = "checkout",
+                        date_time = latestPunch.Value
+                    });
+
+                _dbContext.AttendanceLogs.Add(new AttendanceLog
+                {
+                    EmployeeCode = employee.BiometricUserId,
+                    CheckTime = latestPunch.Value,
+                    AttendanceState = "checkout",
+                    IsProcessed = true,
+                    Status = result ? "Success" : "Failed",
+                    ErrorMessage = result ? "Biometric checkout applied by auto checkout job" : "Failed to apply biometric checkout"
+                });
+
+                await _dbContext.SaveChangesAsync();
+
+                context.WriteLine(
+                    result ? ConsoleTextColor.Green : ConsoleTextColor.Red,
+                    $"Biometric checkout {(result ? "SUCCESS" : "FAILED")} for {employee.EmployeeName} at {latestPunch.Value:yyyy-MM-dd HH:mm:ss}");
+
+                return;
+            }
+
+            // No punch after check-in exists yet, so fall back to the policy
+            // auto-checkout time.
+            var autoCheckoutResult = await _apiService.SendAsync(
                 new AttendanceAPIDto
                 {
                     employee_code = employee.HRMEmployeeCode,
                     type = "checkout",
-                    date_time = new DateTime(policyAutoCheckoutTime.Year, policyAutoCheckoutTime.Month, policyAutoCheckoutTime.Day, policyAutoCheckoutTime.Hour,policyAutoCheckoutTime.Minute, policyAutoCheckoutTime.Second)
+                    date_time = policyAutoCheckoutTime
                 });
 
             _dbContext.AttendanceLogs.Add(new AttendanceLog
@@ -453,19 +510,17 @@ namespace Zyra.LantimeServiceApp.JobService
                 CheckTime = policyAutoCheckoutTime,
                 AttendanceState = "Auto checkout",
                 IsProcessed = true,
-                Status = result ? "Success" : "Failed",
-                ErrorMessage = result ? "Auto checkout" : "Failed to auto checkout",
+                Status = autoCheckoutResult ? "Success" : "Failed",
+                ErrorMessage = autoCheckoutResult
+                    ? "Policy auto checkout"
+                    : "Failed to auto checkout"
             });
-            _dbContext.SaveChanges();
+
+            await _dbContext.SaveChangesAsync();
 
             context.WriteLine(
-                result
-                    ? ConsoleTextColor.Green
-                    : ConsoleTextColor.Red,
-                $"Auto checkout {(result ? "SUCCESS" : "FAILED")} " +
-                $"for {employee.EmployeeName} " +
-                $"using policy {policy.PolicyName} " +
-                $"at {policyAutoCheckoutTime}");
+                autoCheckoutResult ? ConsoleTextColor.Green : ConsoleTextColor.Red,
+                $"Auto checkout {(autoCheckoutResult ? "SUCCESS" : "FAILED")} for {employee.EmployeeName} using policy {policy.PolicyName} at {policyAutoCheckoutTime}");
         }
 
         private void LogInformation(PerformContext? context, string message, ConsoleTextColor? color = null)
