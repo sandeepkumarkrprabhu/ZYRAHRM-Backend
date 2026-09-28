@@ -207,7 +207,7 @@ namespace Zyra.LantimeServiceApp.Services
                 return;
             }
 
-            var validation = _attendanceValidationService.ValidateCheckOut(
+            var validation = await _attendanceValidationService.ValidateCheckOutAsync(
                 employee,
                 policy,
                 record);
