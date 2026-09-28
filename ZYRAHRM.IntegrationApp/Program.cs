@@ -87,6 +87,7 @@ builder.Services.AddScoped<IDbService, DbService>();
 builder.Services.AddScoped<ISessionService, SessionService>();
 builder.Services.AddScoped<IHttpService, HttpService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<INavigationService, NavigationService>();
 builder.Services.AddScoped<IJobService, JobService>();
 builder.Services.AddScoped<IAttendanceProvider, AttendanceProvider>();
 builder.Services.AddScoped<IAttendanceApiService, AttendanceApiService>();
