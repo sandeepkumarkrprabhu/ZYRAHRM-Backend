@@ -16,7 +16,11 @@ namespace ZyraHangfireService
         public static void Register(IServiceProvider provider, TimeZoneInfo istZone)
         {
             var settings = provider.GetRequiredService<IOptions<BiometricSyncSettings>>().Value;
-            var dbContext = provider.GetRequiredService<AttendanceDbContext>();
+
+            // AttendanceDbContext is registered as Scoped. Hangfire registration
+            // runs during application startup, so create a scope before resolving it.
+            using var scope = provider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<AttendanceDbContext>();
 
             // -------------------------------
             // ATTENDANCE SYNC JOB
