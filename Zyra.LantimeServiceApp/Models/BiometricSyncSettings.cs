@@ -7,6 +7,10 @@ namespace Zyra.LantimeServiceApp.Models
 
         public string AutoCheckoutJobCron { get; set; }
 
+        public bool CompanyForceCheckoutEnabled { get; set; } = false;
+
+        public string CompanyForceCheckoutJobCron { get; set; } = "59 23 * * *";
+
         public string DirectorAttendanceJobCron { get; set; }
 
         public string EmployeeMasterSyncJobCron { get; set; }
