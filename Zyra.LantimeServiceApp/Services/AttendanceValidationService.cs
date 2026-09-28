@@ -42,24 +42,23 @@ namespace Zyra.LantimeServiceApp.Services
                     $"Check-in time {attendance.CheckInTime:dd-MM-yyyy HH:mm:ss} is outside the allowed shift window.");
             }
 
-            var alreadyCheckedIn = await _dbContext.AttendanceLogs
+            var alreadySynced = await _dbContext.AttendanceLogs
                 .AsNoTracking()
                 .AnyAsync(x =>
                     x.EmployeeCode == employee.BiometricUserId &&
                     x.Status == "Success" &&
                     x.AttendanceState == "checkin" &&
-                    x.CheckTime >= shift.Start &&
-                    x.CheckTime <= shift.End);
+                    x.CheckTime == attendance.CheckInTime);
 
-            if (alreadyCheckedIn)
+            if (alreadySynced)
             {
-                return Invalid("Employee has already checked in successfully for this shift.");
+                return Invalid("This biometric check-in has already been synchronized successfully.");
             }
 
             return Valid();
         }
 
-        public AttendanceValidationResult ValidateCheckOut(
+        public async Task<AttendanceValidationResult> ValidateCheckOutAsync(
             EmployeeMapperDto employee,
             EmployeeAttendancePolicy policy,
             AttendanceDto attendance)
@@ -84,6 +83,19 @@ namespace Zyra.LantimeServiceApp.Services
             {
                 return Invalid(
                     $"Check-out time {attendance.CheckOutTime:dd-MM-yyyy HH:mm:ss} is outside the allowed shift window.");
+            }
+
+            var alreadySynced = await _dbContext.AttendanceLogs
+                .AsNoTracking()
+                .AnyAsync(x =>
+                    x.EmployeeCode == employee.BiometricUserId &&
+                    x.Status == "Success" &&
+                    x.AttendanceState == "checkout" &&
+                    x.CheckTime == attendance.CheckOutTime);
+
+            if (alreadySynced)
+            {
+                return Invalid("This biometric check-out has already been synchronized successfully.");
             }
 
             return Valid();
