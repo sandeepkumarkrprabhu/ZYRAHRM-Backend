@@ -31,6 +31,22 @@ namespace ZyraHangfireService
                 new RecurringJobOptions { TimeZone = istZone });
 
             // -------------------------------
+            // COMPANY FORCE CHECKOUT JOB
+            // -------------------------------
+            if (settings.CompanyForceCheckoutEnabled)
+            {
+                RecurringJob.AddOrUpdate<ICompanyForceCheckoutJob>(
+                    "ProcessCompanyForceCheckoutJob",
+                    x => x.Execute(null),
+                    settings.CompanyForceCheckoutJobCron,
+                    new RecurringJobOptions { TimeZone = istZone });
+            }
+            else
+            {
+                RecurringJob.RemoveIfExists("ProcessCompanyForceCheckoutJob");
+            }
+
+            // -------------------------------
             // DIRECTOR ATTENDANCE JOB
             // -------------------------------
             RecurringJob.AddOrUpdate<IDirectorAttendanceJob>(
