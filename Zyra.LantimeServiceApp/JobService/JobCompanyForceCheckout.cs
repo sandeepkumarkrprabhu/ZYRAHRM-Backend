@@ -3,6 +3,8 @@ using Hangfire.Server;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Zyra.LantimeServiceApp.Interfaces;
+using Zyra.LantimeServiceApp.Models;
+using ZYRA.Attendance.Infrastructure;
 using ZyraHangfireModels.Models;
 
 namespace Zyra.LantimeServiceApp.JobService
