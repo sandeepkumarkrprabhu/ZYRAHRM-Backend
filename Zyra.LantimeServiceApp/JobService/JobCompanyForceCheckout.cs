@@ -41,41 +41,84 @@ namespace Zyra.LantimeServiceApp.JobService
 
             try
             {
-                _logger.LogInformation(
-                    "Company force checkout job started at {Time}", now);
-
-                context.WriteLine(
+                Log(
+                    context,
                     ConsoleTextColor.Cyan,
-                    $"Company force checkout started at {now:yyyy-MM-dd HH:mm:ss}");
+                    "Company force checkout job started at {0:yyyy-MM-dd HH:mm:ss}",
+                    now);
 
-                // Process employees who have attendance activity in the current
-                // or previous calendar day. We intentionally do not restrict this
-                // to currently open records because an employee may have already
-                // received a normal/policy checkout and then worked additional time.
-                var employeeIds = await GetAttendanceEmployeeIdsAsync(now);
+                // IMPORTANT:
+                // Shift exclusion is the first filter. We do not query attendance
+                // logs or biometric punches until we know the employee is outside
+                // the current applicable shift.
+                var employees = await GetEmployeesOutsideActiveShiftAsync(
+                    now,
+                    context);
 
-                if (employeeIds.Count == 0)
+                if (employees.Count == 0)
                 {
-                    context.WriteLine(
+                    Log(
+                        context,
                         ConsoleTextColor.Gray,
-                        "No attendance activity found.");
+                        "No employees are outside their active shift.");
+
                     return;
                 }
 
-                var policyMap = await _employeeAttendanceService
-                    .GetEmployeeAttendancePoliciesAsync(employeeIds);
+                Log(
+                    context,
+                    ConsoleTextColor.Cyan,
+                    "Found {0} employees requiring company force checkout processing.",
+                    employees.Count);
 
-                foreach (var employeeId in employeeIds)
+                var failedEmployees = new List<ForceCheckoutEmployee>();
+
+                foreach (var employee in employees)
                 {
-                    await ProcessEmployeeAsync(
-                        employeeId,
-                        policyMap,
+                    var result = await ProcessEmployeeAsync(
+                        employee,
+                        now,
+                        context);
+
+                    if (!result.Success)
+                    {
+                        failedEmployees.Add(new ForceCheckoutEmployee
+                        {
+                            Employee = employee,
+                            Reason = result.FailureReason ?? "Attendance processing failed."
+                        });
+                    }
+                }
+
+                // Force checkout is the final fallback. It must run only after
+                // every employee has gone through reconciliation/normal checkout.
+                if (failedEmployees.Count > 0)
+                {
+                    Log(
+                        context,
+                        ConsoleTextColor.Yellow,
+                        "Starting force checkout fallback for {0} failed employees.",
+                        failedEmployees.Count);
+
+                    await ForceCheckoutFailedEmployeesAsync(
+                        failedEmployees,
                         now,
                         context);
                 }
+                else
+                {
+                    Log(
+                        context,
+                        ConsoleTextColor.Green,
+                        "No failed employees. Force checkout fallback was not required.");
+                }
 
-                _logger.LogInformation(
-                    "Company force checkout job completed.");
+                Log(
+                    context,
+                    ConsoleTextColor.Green,
+                    "Company force checkout job completed. Processed={0}, Failed={1}",
+                    employees.Count,
+                    failedEmployees.Count);
             }
             catch (Exception ex)
             {
@@ -91,256 +134,399 @@ namespace Zyra.LantimeServiceApp.JobService
             }
         }
 
-        private async Task ProcessEmployeeAsync(
-            int employeeId,
-            IReadOnlyDictionary<int, EmployeeAttendancePolicy> policyMap,
+        private async Task<List<EmployeeMapping>> GetEmployeesOutsideActiveShiftAsync(
             DateTime now,
             PerformContext context)
         {
-            if (!policyMap.TryGetValue(employeeId, out var assignment) ||
-                assignment.AttendancePolicy == null)
-            {
-                context.WriteLine(
-                    ConsoleTextColor.Gray,
-                    $"Force checkout skipped for employee {employeeId}: no active attendance policy.");
-                return;
-            }
-
-            var employee = await _dbContext.EmployeeMappings
+            // Get the complete active biometric employee population first.
+            // No AttendanceLogs/biometric queries are performed here.
+            var employees = await _dbContext.EmployeeMappings
                 .AsNoTracking()
-                .FirstOrDefaultAsync(x =>
-                    x.Id == employeeId &&
-                    x.IsActive &&
-                    !x.IsExcludeFromBiometric);
-
-            if (employee == null ||
-                string.IsNullOrWhiteSpace(employee.BiometricUserId) ||
-                string.IsNullOrWhiteSpace(employee.HRMEmployeeCode))
-            {
-                return;
-            }
-
-            var shift = _shiftService.BuildShiftWindow(
-                assignment,
-                now,
-                employee.EmployeeName);
-
-            if (shift == null)
-            {
-                context.WriteLine(
-                    ConsoleTextColor.Gray,
-                    $"Force checkout skipped for {employee.EmployeeName}: unable to determine shift.");
-                return;
-            }
-
-            // Never force-close an employee while the assigned shift is active.
-            // This protects overnight employees whose shift crosses midnight.
-            if (now >= shift.ShiftStart && now <= shift.ShiftEnd)
-            {
-                context.WriteLine(
-                    ConsoleTextColor.Yellow,
-                    $"Force checkout excluded {employee.EmployeeName}: " +
-                    $"active shift {shift.ShiftStart:yyyy-MM-dd HH:mm} - " +
-                    $"{shift.ShiftEnd:yyyy-MM-dd HH:mm}");
-                return;
-            }
-
-            var logs = await GetEmployeeAttendanceLogsAsync(
-                employee.BiometricUserId,
-                now);
-
-            var latestCheckIn = logs
-                .Where(x => x.AttendanceState == HRMConstants.CheckInState)
-                .OrderByDescending(x => x.CheckTime)
-                .FirstOrDefault();
-
-            if (latestCheckIn == null)
-                return;
-
-            var latestCheckout = logs
                 .Where(x =>
-                    x.AttendanceState == HRMConstants.CheckoutState ||
-                    x.AttendanceState == HRMConstants.AutoCheckoutState ||
-                    x.AttendanceState == HRMConstants.ForceCheckoutState)
-                .OrderByDescending(x => x.CheckTime)
-                .FirstOrDefault();
+                    x.IsActive &&
+                    !x.IsExcludeFromBiometric &&
+                    x.BiometricUserId != null &&
+                    x.HRMEmployeeCode != null)
+                .ToListAsync();
 
-            // ------------------------------------------------------------
-            // CASE 1: The employee already checked out.
-            //
-            // Check the biometric device for a punch after that checkout.
-            // If one exists, preserve the period from the last checkout to
-            // the latest punch as an extra working session.
-            // ------------------------------------------------------------
-            if (latestCheckout != null &&
-                latestCheckout.CheckTime >= latestCheckIn.CheckTime)
+            if (employees.Count == 0)
+                return new List<EmployeeMapping>();
+
+            var employeeIds = employees
+                .Select(x => x.Id)
+                .Distinct()
+                .ToList();
+
+            var policyMap = await _employeeAttendanceService
+                .GetEmployeeAttendancePoliciesAsync(employeeIds);
+
+            var result = new List<EmployeeMapping>();
+
+            foreach (var employee in employees)
             {
-                await ProcessExtraWorkingTimeAsync(
-                    employee,
-                    latestCheckout.CheckTime,
-                    now,
-                    context);
+                if (!policyMap.TryGetValue(employee.Id, out var assignment) ||
+                    assignment.AttendancePolicy == null)
+                {
+                    Log(
+                        context,
+                        ConsoleTextColor.Gray,
+                        "Shift exclusion skipped {0}: no active attendance policy.",
+                        employee.EmployeeName);
 
-                return;
+                    continue;
+                }
+
+                var shift = _shiftService.BuildShiftWindow(
+                    assignment,
+                    now,
+                    employee.EmployeeName);
+
+                if (shift == null)
+                {
+                    Log(
+                        context,
+                        ConsoleTextColor.Gray,
+                        "Shift exclusion skipped {0}: unable to determine shift.",
+                        employee.EmployeeName);
+
+                    continue;
+                }
+
+                // Employee remains excluded while current time is inside the
+                // actual shift window. BuildShiftWindow handles overnight shifts.
+                if (now >= shift.ShiftStart && now <= shift.ShiftEnd)
+                {
+                    Log(
+                        context,
+                        ConsoleTextColor.Gray,
+                        "Shift exclusion: {0} is inside active shift {1:yyyy-MM-dd HH:mm} - {2:yyyy-MM-dd HH:mm}.",
+                        employee.EmployeeName,
+                        shift.ShiftStart,
+                        shift.ShiftEnd);
+
+                    continue;
+                }
+
+                result.Add(employee);
+
+                Log(
+                    context,
+                    ConsoleTextColor.Yellow,
+                    "Employee selected: {0}; outside shift {1:yyyy-MM-dd HH:mm} - {2:yyyy-MM-dd HH:mm}.",
+                    employee.EmployeeName,
+                    shift.ShiftStart,
+                    shift.ShiftEnd);
             }
 
-            // ------------------------------------------------------------
-            // CASE 2: The employee still has an open attendance.
-            //
-            // Do one final biometric lookup before using the company force
-            // checkout time. A late device punch always wins.
-            // ------------------------------------------------------------
-            var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
-                employee.BiometricUserId,
-                latestCheckIn.CheckTime,
-                now);
-
-            var checkoutTime = latestPunch ?? now;
-            var checkoutState = latestPunch.HasValue
-                ? HRMConstants.CheckoutState
-                : HRMConstants.ForceCheckoutState;
-
-            await ProcessCheckoutAsync(
-                employee,
-                checkoutTime,
-                checkoutState,
-                latestPunch.HasValue
-                    ? "Latest biometric punch used by company force checkout job"
-                    : "Company force checkout",
-                context);
+            return result;
         }
 
-        private async Task ProcessExtraWorkingTimeAsync(
+        private async Task<ProcessResult> ProcessEmployeeAsync(
+            EmployeeMapping employee,
+            DateTime now,
+            PerformContext context)
+        {
+            try
+            {
+                var logs = await GetEmployeeAttendanceLogsAsync(
+                    employee.BiometricUserId!,
+                    now);
+
+                var latestCheckIn = logs
+                    .Where(x => x.AttendanceState == HRMConstants.CheckInState)
+                    .OrderByDescending(x => x.CheckTime)
+                    .FirstOrDefault();
+
+                var latestCheckout = logs
+                    .Where(x =>
+                        x.AttendanceState == HRMConstants.CheckoutState ||
+                        x.AttendanceState == HRMConstants.AutoCheckoutState ||
+                        x.AttendanceState == HRMConstants.ForceCheckoutState ||
+                        x.AttendanceState == HRMConstants.ExtraCheckOutState)
+                    .OrderByDescending(x => x.CheckTime)
+                    .FirstOrDefault();
+
+                if (latestCheckIn == null && latestCheckout == null)
+                {
+                    Log(
+                        context,
+                        ConsoleTextColor.Gray,
+                        "{0}: no attendance record requiring checkout.",
+                        employee.EmployeeName);
+
+                    return ProcessResult.SuccessResult();
+                }
+
+                // ============================================================
+                // CASE 1:
+                // A checkout already exists. Compare it with the latest
+                // biometric punch. If the punch is later, reconcile the
+                // additional working period:
+                //
+                //   Check-in  = last attendance checkout
+                //   Checkout  = latest biometric punch
+                // ============================================================
+                if (latestCheckout != null &&
+                    (latestCheckIn == null ||
+                     latestCheckout.CheckTime >= latestCheckIn.CheckTime))
+                {
+                    var result = await ProcessExtraWorkingTimeAsync(
+                        employee,
+                        latestCheckout.CheckTime,
+                        now,
+                        context);
+
+                    return result;
+                }
+
+                // ============================================================
+                // CASE 2:
+                // Only an open check-in exists. The latest biometric punch
+                // becomes the checkout time.
+                // ============================================================
+                if (latestCheckIn != null)
+                {
+                    var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
+                        employee.BiometricUserId!,
+                        latestCheckIn.CheckTime,
+                        now);
+
+                    if (!latestPunch.HasValue ||
+                        latestPunch.Value <= latestCheckIn.CheckTime)
+                    {
+                        return ProcessResult.Failed(
+                            "Open check-in exists, but no biometric punch was found after the check-in.");
+                    }
+
+                    var checkoutSuccess = await SendAttendanceApiAsync(
+                        employee,
+                        HRMConstants.CheckoutState,
+                        latestPunch.Value,
+                        "Open check-in checkout using latest biometric punch",
+                        context);
+
+                    if (!checkoutSuccess)
+                    {
+                        return ProcessResult.Failed(
+                            "Checkout API failed for the latest biometric punch.");
+                    }
+
+                    return ProcessResult.SuccessResult();
+                }
+
+                return ProcessResult.SuccessResult();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Attendance processing failed for employee {EmployeeCode}",
+                    employee.HRMEmployeeCode);
+
+                Log(
+                    context,
+                    ConsoleTextColor.Red,
+                    "Attendance processing exception for {0}: {1}",
+                    employee.EmployeeName,
+                    ex.Message);
+
+                return ProcessResult.Failed(ex.Message);
+            }
+        }
+
+        private async Task<ProcessResult> ProcessExtraWorkingTimeAsync(
             EmployeeMapping employee,
             DateTime lastCheckoutTime,
             DateTime now,
             PerformContext context)
         {
             var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
-                employee.BiometricUserId,
+                employee.BiometricUserId!,
                 lastCheckoutTime,
                 now);
 
             if (!latestPunch.HasValue ||
                 latestPunch.Value <= lastCheckoutTime)
             {
-                context.WriteLine(
+                Log(
+                    context,
                     ConsoleTextColor.Gray,
-                    $"No extra working time for {employee.EmployeeName} " +
-                    $"after checkout {lastCheckoutTime:yyyy-MM-dd HH:mm:ss}.");
-                return;
+                    "{0}: no biometric punch after last checkout {1:yyyy-MM-dd HH:mm:ss}.",
+                    employee.EmployeeName,
+                    lastCheckoutTime);
+
+                return ProcessResult.SuccessResult();
             }
 
             var extraCheckoutTime = latestPunch.Value;
             var extraMinutes = (int)(extraCheckoutTime - lastCheckoutTime).TotalMinutes;
 
             if (extraMinutes <= 0)
-                return;
+                return ProcessResult.SuccessResult();
 
-            // The existing extra-time model represents additional work as:
-            //   Extra checkin  = previous checkout
-            //   Extra checkout = latest biometric punch
-            //
-            // This makes the additional period visible to the existing
-            // ExtraTimeEvaluationService without changing the base attendance
-            // session that was already closed.
+            // Reconciliation is idempotent. Do not send another check-in if
+            // this exact extra session has already been created successfully.
             var hasExtraCheckIn = await HasAttendanceLogAsync(
-                employee.BiometricUserId,
+                employee.BiometricUserId!,
                 lastCheckoutTime,
                 HRMConstants.ExtraCheckInState);
 
             if (!hasExtraCheckIn)
             {
-                var checkInSuccess = await _apiService.SendAsync(
-                    new AttendanceAPIDto
-                    {
-                        employee_code = employee.HRMEmployeeCode,
-                        type = HRMConstants.CheckInState,
-                        date_time = lastCheckoutTime
-                    });
-
-                await SaveAttendanceLogAsync(
-                    employee.BiometricUserId,
+                var checkInSuccess = await SendAttendanceApiAsync(
+                    employee,
+                    HRMConstants.CheckInState,
                     lastCheckoutTime,
-                    HRMConstants.ExtraCheckInState,
-                    checkInSuccess,
-                    checkInSuccess
-                        ? $"Company force checkout created extra-time check-in. Extra minutes: {extraMinutes}."
-                        : "Failed to create company force checkout extra-time check-in.");
+                    $"Extra working-time check-in. Extra minutes: {extraMinutes}.",
+                    context);
 
                 if (!checkInSuccess)
-                    return;
+                {
+                    return ProcessResult.Failed(
+                        "Extra working-time check-in API failed.");
+                }
+
+                await SaveAttendanceLogAsync(
+                    employee.BiometricUserId!,
+                    lastCheckoutTime,
+                    HRMConstants.ExtraCheckInState,
+                    true,
+                    $"Company force checkout created extra-time check-in. Extra minutes: {extraMinutes}.");
             }
 
             var hasExtraCheckOut = await HasAttendanceLogAsync(
-                employee.BiometricUserId,
+                employee.BiometricUserId!,
                 extraCheckoutTime,
                 HRMConstants.ExtraCheckOutState);
 
-            if (hasExtraCheckOut)
+            if (!hasExtraCheckOut)
             {
-                context.WriteLine(
-                    ConsoleTextColor.Gray,
-                    $"Extra working time already processed for {employee.EmployeeName}: " +
-                    $"{lastCheckoutTime:HH:mm} - {extraCheckoutTime:HH:mm}.");
-                return;
+                var checkOutSuccess = await SendAttendanceApiAsync(
+                    employee,
+                    HRMConstants.CheckoutState,
+                    extraCheckoutTime,
+                    $"Extra working-time checkout. Extra minutes: {extraMinutes}.",
+                    context);
+
+                if (!checkOutSuccess)
+                {
+                    return ProcessResult.Failed(
+                        "Extra working-time checkout API failed.");
+                }
+
+                await SaveAttendanceLogAsync(
+                    employee.BiometricUserId!,
+                    extraCheckoutTime,
+                    HRMConstants.ExtraCheckOutState,
+                    true,
+                    $"Company force checkout created extra-time checkout. Extra minutes: {extraMinutes}.");
             }
 
-            var checkOutSuccess = await _apiService.SendAsync(
-                new AttendanceAPIDto
-                {
-                    employee_code = employee.HRMEmployeeCode,
-                    type = HRMConstants.CheckoutState,
-                    date_time = extraCheckoutTime
-                });
-
-            await SaveAttendanceLogAsync(
-                employee.BiometricUserId,
+            Log(
+                context,
+                ConsoleTextColor.Green,
+                "Extra working time SUCCESS for {0}: {1:dd-MM-yyyy HH:mm} - {2:dd-MM-yyyy HH:mm} ({3} minutes).",
+                employee.EmployeeName,
+                lastCheckoutTime,
                 extraCheckoutTime,
-                HRMConstants.ExtraCheckOutState,
-                checkOutSuccess,
-                checkOutSuccess
-                    ? $"Company force checkout created extra-time check-out. Extra minutes: {extraMinutes}."
-                    : "Failed to create company force checkout extra-time check-out.");
+                extraMinutes);
 
-            context.WriteLine(
-                checkOutSuccess ? ConsoleTextColor.Green : ConsoleTextColor.Red,
-                $"Extra working time {(checkOutSuccess ? "SUCCESS" : "FAILED")} " +
-                $"for {employee.EmployeeName}: " +
-                $"{lastCheckoutTime:dd-MM-yyyy HH:mm} - " +
-                $"{extraCheckoutTime:dd-MM-yyyy HH:mm} " +
-                $"({extraMinutes} minutes).");
+            return ProcessResult.SuccessResult();
         }
 
-        private async Task ProcessCheckoutAsync(
-            EmployeeMapping employee,
-            DateTime checkoutTime,
-            string checkoutState,
-            string message,
+        private async Task ForceCheckoutFailedEmployeesAsync(
+            IReadOnlyCollection<ForceCheckoutEmployee> failedEmployees,
+            DateTime now,
             PerformContext context)
         {
-            var result = await _apiService.SendAsync(
-                new AttendanceAPIDto
-                {
-                    employee_code = employee.HRMEmployeeCode,
-                    type = HRMConstants.CheckoutState,
-                    date_time = checkoutTime
-                });
-
-            if (result)
+            foreach (var failed in failedEmployees)
             {
+                var employee = failed.Employee;
+
+                // The current attendance API exposes the generic attendance
+                // action endpoint. "Force checkout" is represented internally
+                // by ForceCheckoutState; the API action remains "checkout".
+                var success = await SendAttendanceApiAsync(
+                    employee,
+                    HRMConstants.ForceCheckoutState,
+                    now,
+                    $"Force checkout fallback. Previous processing failed: {failed.Reason}",
+                    context);
+
+                if (!success)
+                {
+                    Log(
+                        context,
+                        ConsoleTextColor.Red,
+                        "Force checkout FAILED for {0}. Previous failure: {1}",
+                        employee.EmployeeName,
+                        failed.Reason);
+
+                    continue;
+                }
+
                 await SaveAttendanceLogAsync(
-                    employee.BiometricUserId,
-                    checkoutTime,
-                    checkoutState,
+                    employee.BiometricUserId!,
+                    now,
+                    HRMConstants.ForceCheckoutState,
                     true,
-                    message);
+                    $"Company force checkout fallback. Previous failure: {failed.Reason}");
+
+                Log(
+                    context,
+                    ConsoleTextColor.Green,
+                    "Force checkout SUCCESS for {0}. Previous failure: {1}",
+                    employee.EmployeeName,
+                    failed.Reason);
             }
+        }
+
+        private async Task<bool> SendAttendanceApiAsync(
+            EmployeeMapping employee,
+            string state,
+            DateTime attendanceTime,
+            string reason,
+            PerformContext context)
+        {
+            // The external endpoint accepts the normal attendance action
+            // values (checkin/checkout). ForceCheckoutState is an internal
+            // audit state, so the API request uses "checkout".
+            var apiType = state == HRMConstants.CheckInState
+                ? HRMConstants.CheckInState
+                : HRMConstants.CheckoutState;
+
+            var request = new AttendanceAPIDto
+            {
+                employee_code = employee.HRMEmployeeCode,
+                type = apiType,
+                date_time = attendanceTime
+            };
+
+            var success = await _apiService.SendAsync(request);
+
+            var status = success ? "SUCCESS" : "FAILED";
+
+            _logger.LogInformation(
+                "JobCompanyForceCheckout API result | Employee={EmployeeCode} | EmployeeName={EmployeeName} | ApiAction={ApiAction} | State={State} | Time={AttendanceTime:yyyy-MM-dd HH:mm:ss} | Status={Status} | Reason={Reason}",
+                employee.HRMEmployeeCode,
+                employee.EmployeeName,
+                apiType,
+                state,
+                attendanceTime,
+                status,
+                reason);
 
             context.WriteLine(
-                result ? ConsoleTextColor.Green : ConsoleTextColor.Red,
-                $"{checkoutState} {(result ? "SUCCESS" : "FAILED")} " +
-                $"for {employee.EmployeeName} at {checkoutTime:yyyy-MM-dd HH:mm:ss}");
+                success ? ConsoleTextColor.Green : ConsoleTextColor.Red,
+                "API {0} | Employee={1} | Action={2} | State={3} | Time={4:yyyy-MM-dd HH:mm:ss} | Reason={5}",
+                status,
+                employee.EmployeeName,
+                apiType,
+                state,
+                attendanceTime,
+                reason);
+
+            return success;
         }
 
         private async Task<List<AttendanceLog>> GetEmployeeAttendanceLogsAsync(
@@ -358,36 +544,10 @@ namespace Zyra.LantimeServiceApp.JobService
                     (x.AttendanceState == HRMConstants.CheckInState ||
                      x.AttendanceState == HRMConstants.CheckoutState ||
                      x.AttendanceState == HRMConstants.AutoCheckoutState ||
-                     x.AttendanceState == HRMConstants.ForceCheckoutState))
+                     x.AttendanceState == HRMConstants.ForceCheckoutState ||
+                     x.AttendanceState == HRMConstants.ExtraCheckInState ||
+                     x.AttendanceState == HRMConstants.ExtraCheckOutState))
                 .OrderByDescending(x => x.CheckTime)
-                .ToListAsync();
-        }
-
-        private async Task<List<int>> GetAttendanceEmployeeIdsAsync(DateTime now)
-        {
-            var employeeCodes = await _dbContext.AttendanceLogs
-                .AsNoTracking()
-                .Where(x =>
-                    x.CheckTime >= now.Date.AddDays(-1) &&
-                    x.CheckTime <= now &&
-                    x.IsProcessed &&
-                    x.Status == "Success" &&
-                    (x.AttendanceState == HRMConstants.CheckInState ||
-                     x.AttendanceState == HRMConstants.CheckoutState ||
-                     x.AttendanceState == HRMConstants.AutoCheckoutState ||
-                     x.AttendanceState == HRMConstants.ForceCheckoutState))
-                .Select(x => x.EmployeeCode)
-                .Distinct()
-                .ToListAsync();
-
-            return await _dbContext.EmployeeMappings
-                .AsNoTracking()
-                .Where(x =>
-                    x.IsActive &&
-                    !x.IsExcludeFromBiometric &&
-                    employeeCodes.Contains(x.BiometricUserId))
-                .Select(x => x.Id)
-                .Distinct()
                 .ToListAsync();
         }
 
@@ -425,6 +585,45 @@ namespace Zyra.LantimeServiceApp.JobService
             });
 
             await _dbContext.SaveChangesAsync();
+        }
+
+        private void Log(
+            PerformContext context,
+            ConsoleTextColor color,
+            string message,
+            params object[] args)
+        {
+            var formattedMessage = string.Format(message, args);
+
+            _logger.LogInformation(
+                "JobCompanyForceCheckout | {Message}",
+                formattedMessage);
+
+            context.WriteLine(
+                color,
+                formattedMessage);
+        }
+
+        private sealed class ForceCheckoutEmployee
+        {
+            public required EmployeeMapping Employee { get; init; }
+            public required string Reason { get; init; }
+        }
+
+        private sealed class ProcessResult
+        {
+            public bool Success { get; init; }
+            public string? FailureReason { get; init; }
+
+            public static ProcessResult SuccessResult()
+                => new() { Success = true };
+
+            public static ProcessResult Failed(string reason)
+                => new()
+                {
+                    Success = false,
+                    FailureReason = reason
+                };
         }
     }
 }
