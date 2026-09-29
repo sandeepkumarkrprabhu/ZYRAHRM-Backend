@@ -2,6 +2,7 @@ using Hangfire.Console;
 using Hangfire.Server;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Zyra.LantimeServiceApp.Constants;
 using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.Models;
 using ZYRA.Attendance.Infrastructure;
@@ -11,13 +12,6 @@ namespace Zyra.LantimeServiceApp.JobService
 {
     public sealed class JobCompanyForceCheckout : ICompanyForceCheckoutJob
     {
-        private const string CheckInState = "checkin";
-        private const string CheckoutState = "checkout";
-        private const string AutoCheckoutState = "Auto checkout";
-        private const string ForceCheckoutState = "Force checkout";
-        private const string ExtraCheckInState = "Extra checkin";
-        private const string ExtraCheckOutState = "Extra checkout";
-
         private readonly IAttendanceProvider _attendanceProvider;
         private readonly IAttendanceApiService _apiService;
         private readonly AttendanceDbContext _dbContext;
@@ -156,7 +150,7 @@ namespace Zyra.LantimeServiceApp.JobService
                 now);
 
             var latestCheckIn = logs
-                .Where(x => x.AttendanceState == CheckInState)
+                .Where(x => x.AttendanceState == HRMConstants.CheckInState)
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
@@ -165,9 +159,9 @@ namespace Zyra.LantimeServiceApp.JobService
 
             var latestCheckout = logs
                 .Where(x =>
-                    x.AttendanceState == CheckoutState ||
-                    x.AttendanceState == AutoCheckoutState ||
-                    x.AttendanceState == ForceCheckoutState)
+                    x.AttendanceState == HRMConstants.CheckoutState ||
+                    x.AttendanceState == HRMConstants.AutoCheckoutState ||
+                    x.AttendanceState == HRMConstants.ForceCheckoutState)
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
@@ -203,8 +197,8 @@ namespace Zyra.LantimeServiceApp.JobService
 
             var checkoutTime = latestPunch ?? now;
             var checkoutState = latestPunch.HasValue
-                ? CheckoutState
-                : ForceCheckoutState;
+                ? HRMConstants.CheckoutState
+                : HRMConstants.ForceCheckoutState;
 
             await ProcessCheckoutAsync(
                 employee,
@@ -253,7 +247,7 @@ namespace Zyra.LantimeServiceApp.JobService
             var hasExtraCheckIn = await HasAttendanceLogAsync(
                 employee.BiometricUserId,
                 lastCheckoutTime,
-                ExtraCheckInState);
+                HRMConstants.ExtraCheckInState);
 
             if (!hasExtraCheckIn)
             {
@@ -261,14 +255,14 @@ namespace Zyra.LantimeServiceApp.JobService
                     new AttendanceAPIDto
                     {
                         employee_code = employee.HRMEmployeeCode,
-                        type = CheckInState,
+                        type = HRMConstants.CheckInState,
                         date_time = lastCheckoutTime
                     });
 
                 await SaveAttendanceLogAsync(
                     employee.BiometricUserId,
                     lastCheckoutTime,
-                    ExtraCheckInState,
+                    HRMConstants.ExtraCheckInState,
                     checkInSuccess,
                     checkInSuccess
                         ? $"Company force checkout created extra-time check-in. Extra minutes: {extraMinutes}."
@@ -281,7 +275,7 @@ namespace Zyra.LantimeServiceApp.JobService
             var hasExtraCheckOut = await HasAttendanceLogAsync(
                 employee.BiometricUserId,
                 extraCheckoutTime,
-                ExtraCheckOutState);
+                HRMConstants.ExtraCheckOutState);
 
             if (hasExtraCheckOut)
             {
@@ -296,14 +290,14 @@ namespace Zyra.LantimeServiceApp.JobService
                 new AttendanceAPIDto
                 {
                     employee_code = employee.HRMEmployeeCode,
-                    type = CheckoutState,
+                    type = HRMConstants.CheckoutState,
                     date_time = extraCheckoutTime
                 });
 
             await SaveAttendanceLogAsync(
                 employee.BiometricUserId,
                 extraCheckoutTime,
-                ExtraCheckOutState,
+                HRMConstants.ExtraCheckOutState,
                 checkOutSuccess,
                 checkOutSuccess
                     ? $"Company force checkout created extra-time check-out. Extra minutes: {extraMinutes}."
@@ -329,7 +323,7 @@ namespace Zyra.LantimeServiceApp.JobService
                 new AttendanceAPIDto
                 {
                     employee_code = employee.HRMEmployeeCode,
-                    type = CheckoutState,
+                    type = HRMConstants.CheckoutState,
                     date_time = checkoutTime
                 });
 
@@ -361,10 +355,10 @@ namespace Zyra.LantimeServiceApp.JobService
                     x.CheckTime <= now &&
                     x.IsProcessed &&
                     x.Status == "Success" &&
-                    (x.AttendanceState == CheckInState ||
-                     x.AttendanceState == CheckoutState ||
-                     x.AttendanceState == AutoCheckoutState ||
-                     x.AttendanceState == ForceCheckoutState))
+                    (x.AttendanceState == HRMConstants.CheckInState ||
+                     x.AttendanceState == HRMConstants.CheckoutState ||
+                     x.AttendanceState == HRMConstants.AutoCheckoutState ||
+                     x.AttendanceState == HRMConstants.ForceCheckoutState))
                 .OrderByDescending(x => x.CheckTime)
                 .ToListAsync();
         }
@@ -378,10 +372,10 @@ namespace Zyra.LantimeServiceApp.JobService
                     x.CheckTime <= now &&
                     x.IsProcessed &&
                     x.Status == "Success" &&
-                    (x.AttendanceState == CheckInState ||
-                     x.AttendanceState == CheckoutState ||
-                     x.AttendanceState == AutoCheckoutState ||
-                     x.AttendanceState == ForceCheckoutState))
+                    (x.AttendanceState == HRMConstants.CheckInState ||
+                     x.AttendanceState == HRMConstants.CheckoutState ||
+                     x.AttendanceState == HRMConstants.AutoCheckoutState ||
+                     x.AttendanceState == HRMConstants.ForceCheckoutState))
                 .Select(x => x.EmployeeCode)
                 .Distinct()
                 .ToListAsync();
