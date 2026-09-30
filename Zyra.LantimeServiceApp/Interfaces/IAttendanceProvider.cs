@@ -20,6 +20,8 @@ namespace Zyra.LantimeServiceApp.Interfaces
         /// </summary>
         Task<List<EmployeeMapping>> GetLastPunchDataAsync();
 
+        Task<DateTime?> GetLatestPunchAsync(string biometricUserId, DateTime upToTime);
+
         Task<DateTime?> GetLatestPunchAfterAsync(string biometricUserId, DateTime checkInTime, DateTime upToTime);
 
         /// <summary>
