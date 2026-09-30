@@ -84,6 +84,26 @@ namespace Zyra.LantimeServiceApp.JobService
             }
         }
 
+        public async Task<DateTime?> GetLatestPunchAsync(
+            string biometricUserId,
+            DateTime upToTime)
+        {
+            try
+            {
+                return await _dbService.GetLatestPunchAsync(
+                    biometricUserId,
+                    upToTime);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Error fetching latest biometric punch for {BiometricUserId}",
+                    biometricUserId);
+                throw;
+            }
+        }
+
         public async Task<DateTime?> GetLatestPunchAfterAsync(
             string biometricUserId,
             DateTime checkInTime,
