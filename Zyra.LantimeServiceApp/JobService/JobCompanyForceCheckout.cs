@@ -267,16 +267,21 @@ namespace Zyra.LantimeServiceApp.JobService
                 //   Checkout  = latest biometric punch
                 // ============================================================
                 if (latestCheckout != null &&
-                    (latestCheckIn == null ||
-                     latestCheckout.CheckTime >= latestCheckIn.CheckTime))
+                    latestCheckIn != null &&
+                    latestCheckout.CheckTime > latestCheckIn.CheckTime)
                 {
-                    var result = await ProcessExtraWorkingTimeAsync(
-                        employee,
+                    // A successful checkout after the latest check-in already
+                    // closes the current attendance session. Do not overwrite
+                    // it with the force/auto checkout time.
+                    Log(
+                        context,
+                        ConsoleTextColor.Gray,
+                        "{0}: latest checkout at {1:yyyy-MM-dd HH:mm:ss} is after check-in {2:yyyy-MM-dd HH:mm:ss}. Existing checkout will be retained.",
+                        employee.EmployeeName,
                         latestCheckout.CheckTime,
-                        now,
-                        context);
+                        latestCheckIn.CheckTime);
 
-                    return result;
+                    return ProcessResult.SuccessResult();
                 }
 
                 // ============================================================
@@ -446,11 +451,15 @@ namespace Zyra.LantimeServiceApp.JobService
                 // The current attendance API exposes the generic attendance
                 // action endpoint. "Force checkout" is represented internally
                 // by ForceCheckoutState; the API action remains "checkout".
+                var forceCheckoutTime = await GetForceCheckoutTimeAsync(
+                    employee,
+                    now);
+
                 var success = await SendAttendanceApiAsync(
                     employee,
                     HRMConstants.ForceCheckoutState,
-                    now,
-                    $"Force checkout fallback. Previous processing failed: {failed.Reason}",
+                    forceCheckoutTime,
+                    $"Force checkout fallback at 23:59. Previous processing failed: {failed.Reason}",
                     context);
 
                 if (!success)
@@ -479,6 +488,34 @@ namespace Zyra.LantimeServiceApp.JobService
                     employee.EmployeeName,
                     failed.Reason);
             }
+        }
+
+        private async Task<DateTime> GetForceCheckoutTimeAsync(
+            EmployeeMapping employee,
+            DateTime now)
+        {
+            var latestCheckIn = await _dbContext.AttendanceLogs
+                .AsNoTracking()
+                .Where(x =>
+                    x.EmployeeCode == employee.BiometricUserId &&
+                    x.AttendanceState == HRMConstants.CheckInState &&
+                    x.IsProcessed &&
+                    x.Status == "Success" &&
+                    x.CheckTime <= now)
+                .OrderByDescending(x => x.CheckTime)
+                .Select(x => (DateTime?)x.CheckTime)
+                .FirstOrDefaultAsync();
+
+            if (!latestCheckIn.HasValue)
+                return now;
+
+            var forceCheckoutTime = latestCheckIn.Value.Date
+                .AddHours(23)
+                .AddMinutes(59);
+
+            return forceCheckoutTime > latestCheckIn.Value
+                ? forceCheckoutTime
+                : now;
         }
 
         private async Task<bool> SendAttendanceApiAsync(
