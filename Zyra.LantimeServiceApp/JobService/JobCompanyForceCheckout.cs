@@ -169,10 +169,11 @@ namespace Zyra.LantimeServiceApp.JobService
                 {
                     Log(
                         context,
-                        ConsoleTextColor.Gray,
-                        "Shift exclusion skipped {0}: no active attendance policy.",
+                        ConsoleTextColor.Yellow,
+                        "Employee selected: {0}; no active shift assignment, so company force checkout processing will continue.",
                         employee.EmployeeName);
 
+                    result.Add(employee);
                     continue;
                 }
 
@@ -185,15 +186,17 @@ namespace Zyra.LantimeServiceApp.JobService
                 {
                     Log(
                         context,
-                        ConsoleTextColor.Gray,
-                        "Shift exclusion skipped {0}: unable to determine shift.",
+                        ConsoleTextColor.Yellow,
+                        "Employee selected: {0}; current shift could not be determined, so company force checkout processing will continue.",
                         employee.EmployeeName);
 
+                    result.Add(employee);
                     continue;
                 }
 
-                // Employee remains excluded while current time is inside the
-                // actual shift window. BuildShiftWindow handles overnight shifts.
+                // The only exclusion is when the current time is inside the
+                // employee's actual shift window. BuildShiftWindow handles
+                // overnight shifts.
                 if (now >= shift.ShiftStart && now <= shift.ShiftEnd)
                 {
                     Log(
@@ -228,93 +231,90 @@ namespace Zyra.LantimeServiceApp.JobService
         {
             try
             {
-                var logs = await GetEmployeeAttendanceLogsAsync(
-                    employee.BiometricUserId!,
+                // Attendance reconciliation requires a biometric id. Employees
+                // without one are still processed and will go through direct
+                // force checkout below.
+                var logs = !string.IsNullOrWhiteSpace(employee.BiometricUserId)
+                    ? await GetEmployeeAttendanceLogsAsync(employee.BiometricUserId!, now)
+                    : new List<AttendanceLog>();
+
+                var checkoutStates = new[]
+                {
+                    HRMConstants.CheckoutState,
+                    HRMConstants.AutoCheckoutState,
+                    HRMConstants.ForceCheckoutState,
+                    HRMConstants.ExtraCheckOutState
+                };
+
+                // IMPORTANT:
+                // A failed checkout attempt is also a checkout attempt and must
+                // be considered before deciding whether additional work exists.
+                // Successful checkout is determined from IsProcessed + Status.
+                var latestCheckoutAttempt = await GetLatestCheckoutAttemptAsync(
+                    employee.BiometricUserId,
                     now);
 
-                var latestCheckIn = logs
-                    .Where(x => x.AttendanceState == HRMConstants.CheckInState)
-                    .OrderByDescending(x => x.CheckTime)
-                    .FirstOrDefault();
-
-                var latestCheckout = logs
-                    .Where(x =>
-                        x.AttendanceState == HRMConstants.CheckoutState ||
-                        x.AttendanceState == HRMConstants.AutoCheckoutState ||
-                        x.AttendanceState == HRMConstants.ForceCheckoutState ||
-                        x.AttendanceState == HRMConstants.ExtraCheckOutState)
-                    .OrderByDescending(x => x.CheckTime)
-                    .FirstOrDefault();
-
-                if (latestCheckIn == null && latestCheckout == null)
+                if (latestCheckoutAttempt != null &&
+                    !(latestCheckoutAttempt.IsProcessed &&
+                      latestCheckoutAttempt.Status == "Success"))
                 {
                     Log(
                         context,
-                        ConsoleTextColor.Gray,
-                        "{0}: no attendance record requiring checkout.",
-                        employee.EmployeeName);
+                        ConsoleTextColor.Yellow,
+                        "{0}: last checkout attempt at {1:yyyy-MM-dd HH:mm:ss} was not successful. Retrying checkout.",
+                        employee.EmployeeName,
+                        latestCheckoutAttempt.CheckTime);
 
-                    return ProcessResult.SuccessResult();
+                    return await ExecuteDirectCheckoutAsync(
+                        employee,
+                        now,
+                        "Retry after unsuccessful previous checkout attempt",
+                        context);
                 }
 
-                // ============================================================
-                // CASE 1:
-                // A checkout already exists. Compare it with the latest
-                // biometric punch. If the punch is later, reconcile the
-                // additional working period:
-                //
-                //   Check-in  = last attendance checkout
-                //   Checkout  = latest biometric punch
-                // ============================================================
-                if (latestCheckout != null &&
-                    (latestCheckIn == null ||
-                     latestCheckout.CheckTime >= latestCheckIn.CheckTime))
+                // Last successful checkout is the baseline for detecting
+                // additional biometric work.
+                var lastSuccessfulCheckout = logs
+                    .Where(x =>
+                        checkoutStates.Contains(x.AttendanceState) &&
+                        x.IsProcessed &&
+                        x.Status == "Success")
+                    .OrderByDescending(x => x.CheckTime)
+                    .FirstOrDefault();
+
+                if (lastSuccessfulCheckout != null &&
+                    !string.IsNullOrWhiteSpace(employee.BiometricUserId))
                 {
                     var result = await ProcessExtraWorkingTimeAsync(
                         employee,
-                        latestCheckout.CheckTime,
+                        lastSuccessfulCheckout.CheckTime,
                         now,
                         context);
 
-                    return result;
-                }
+                    if (result.HasAdditionalWork)
+                        return result;
 
-                // ============================================================
-                // CASE 2:
-                // Only an open check-in exists. The latest biometric punch
-                // becomes the checkout time.
-                // ============================================================
-                if (latestCheckIn != null)
-                {
-                    var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
-                        employee.BiometricUserId!,
-                        latestCheckIn.CheckTime,
-                        now);
+                    if (!result.Success)
+                        return result;
 
-                    if (!latestPunch.HasValue ||
-                        latestPunch.Value <= latestCheckIn.CheckTime)
-                    {
-                        return ProcessResult.Failed(
-                            "Open check-in exists, but no biometric punch was found after the check-in.");
-                    }
-
-                    var checkoutSuccess = await SendAttendanceApiAsync(
+                    // No biometric work after the successful checkout. The
+                    // employee still needs to be processed by this job.
+                    return await ExecuteDirectCheckoutAsync(
                         employee,
-                        HRMConstants.CheckoutState,
-                        latestPunch.Value,
-                        "Open check-in checkout using latest biometric punch",
+                        now,
+                        "No biometric punch after last successful checkout",
                         context);
-
-                    if (!checkoutSuccess)
-                    {
-                        return ProcessResult.Failed(
-                            "Checkout API failed for the latest biometric punch.");
-                    }
-
-                    return ProcessResult.SuccessResult();
                 }
 
-                return ProcessResult.SuccessResult();
+                // No previous successful checkout exists. Process the employee
+                // rather than silently treating the employee as complete.
+                return await ExecuteDirectCheckoutAsync(
+                    employee,
+                    now,
+                    lastSuccessfulCheckout == null
+                        ? "No previous successful checkout"
+                        : "Employee has no biometric id for punch reconciliation",
+                    context);
             }
             catch (Exception ex)
             {
@@ -334,6 +334,67 @@ namespace Zyra.LantimeServiceApp.JobService
             }
         }
 
+        private async Task<ProcessResult> ExecuteDirectCheckoutAsync(
+            EmployeeMapping employee,
+            DateTime checkoutTime,
+            string reason,
+            PerformContext context)
+        {
+            var success = await SendAttendanceApiAsync(
+                employee,
+                HRMConstants.ForceCheckoutState,
+                checkoutTime,
+                reason,
+                context);
+
+            if (!success)
+            {
+                return ProcessResult.Failed(
+                    $"Force checkout API failed. Reason: {reason}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(employee.BiometricUserId))
+            {
+                await SaveAttendanceLogAsync(
+                    employee.BiometricUserId!,
+                    checkoutTime,
+                    HRMConstants.ForceCheckoutState,
+                    true,
+                    $"Company force checkout successful. {reason}");
+            }
+
+            Log(
+                context,
+                ConsoleTextColor.Green,
+                "Force checkout SUCCESS for {0} at {1:yyyy-MM-dd HH:mm:ss}. Reason: {2}",
+                employee.EmployeeName,
+                checkoutTime,
+                reason);
+
+            return ProcessResult.SuccessResult();
+        }
+
+        private async Task<AttendanceLog?> GetLatestCheckoutAttemptAsync(
+            string? biometricUserId,
+            DateTime now)
+        {
+            if (string.IsNullOrWhiteSpace(biometricUserId))
+                return null;
+
+            return await _dbContext.AttendanceLogs
+                .AsNoTracking()
+                .Where(x =>
+                    x.EmployeeCode == biometricUserId &&
+                    x.CheckTime <= now &&
+                    (x.AttendanceState == HRMConstants.CheckoutState ||
+                     x.AttendanceState == HRMConstants.AutoCheckoutState ||
+                     x.AttendanceState == HRMConstants.ForceCheckoutState ||
+                     x.AttendanceState == HRMConstants.ExtraCheckOutState))
+                .OrderByDescending(x => x.CheckTime)
+                .ThenByDescending(x => x.ProcessedAt)
+                .FirstOrDefaultAsync();
+        }
+
         private async Task<ProcessResult> ProcessExtraWorkingTimeAsync(
             EmployeeMapping employee,
             DateTime lastCheckoutTime,
@@ -351,11 +412,11 @@ namespace Zyra.LantimeServiceApp.JobService
                 Log(
                     context,
                     ConsoleTextColor.Gray,
-                    "{0}: no biometric punch after last checkout {1:yyyy-MM-dd HH:mm:ss}.",
+                    "{0}: no biometric punch after last successful checkout {1:yyyy-MM-dd HH:mm:ss}.",
                     employee.EmployeeName,
                     lastCheckoutTime);
 
-                return ProcessResult.SuccessResult();
+                return ProcessResult.NoAdditionalWorkResult();
             }
 
             var extraCheckoutTime = latestPunch.Value;
@@ -431,7 +492,7 @@ namespace Zyra.LantimeServiceApp.JobService
                 extraCheckoutTime,
                 extraMinutes);
 
-            return ProcessResult.SuccessResult();
+            return ProcessResult.AdditionalWorkSuccessResult();
         }
 
         private async Task ForceCheckoutFailedEmployeesAsync(
@@ -465,12 +526,15 @@ namespace Zyra.LantimeServiceApp.JobService
                     continue;
                 }
 
-                await SaveAttendanceLogAsync(
-                    employee.BiometricUserId!,
-                    now,
-                    HRMConstants.ForceCheckoutState,
-                    true,
-                    $"Company force checkout fallback. Previous failure: {failed.Reason}");
+                if (!string.IsNullOrWhiteSpace(employee.BiometricUserId))
+                {
+                    await SaveAttendanceLogAsync(
+                        employee.BiometricUserId!,
+                        now,
+                        HRMConstants.ForceCheckoutState,
+                        true,
+                        $"Company force checkout fallback. Previous failure: {failed.Reason}");
+                }
 
                 Log(
                     context,
@@ -614,9 +678,16 @@ namespace Zyra.LantimeServiceApp.JobService
         {
             public bool Success { get; init; }
             public string? FailureReason { get; init; }
+            public bool HasAdditionalWork { get; init; }
 
             public static ProcessResult SuccessResult()
                 => new() { Success = true };
+
+            public static ProcessResult NoAdditionalWorkResult()
+                => new() { Success = true, HasAdditionalWork = false };
+
+            public static ProcessResult AdditionalWorkSuccessResult()
+                => new() { Success = true, HasAdditionalWork = true };
 
             public static ProcessResult Failed(string reason)
                 => new()
