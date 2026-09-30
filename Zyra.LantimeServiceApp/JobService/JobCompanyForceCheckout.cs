@@ -567,6 +567,20 @@ namespace Zyra.LantimeServiceApp.JobService
 
             var success = await _apiService.SendAsync(request);
 
+            // Persist failed checkout attempts so the next job run can
+            // distinguish a failed last checkout from a successful checkout.
+            if (!success &&
+                apiType == HRMConstants.CheckoutState &&
+                !string.IsNullOrWhiteSpace(employee.BiometricUserId))
+            {
+                await SaveAttendanceLogAsync(
+                    employee.BiometricUserId!,
+                    attendanceTime,
+                    state,
+                    false,
+                    reason);
+            }
+
             var status = success ? "SUCCESS" : "FAILED";
 
             _logger.LogInformation(
