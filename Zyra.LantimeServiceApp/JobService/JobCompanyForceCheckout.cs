@@ -138,14 +138,13 @@ namespace Zyra.LantimeServiceApp.JobService
             DateTime now,
             PerformContext context)
         {
-            // Get the complete active biometric employee population first.
-            // No AttendanceLogs/biometric queries are performed here.
+            // Get every active, non-excluded employee. Biometric participation
+            // is not an eligibility condition for company force checkout.
             var employees = await _dbContext.EmployeeMappings
                 .AsNoTracking()
                 .Where(x =>
                     x.IsActive &&
                     !x.IsExcludeFromBiometric &&
-                    x.BiometricUserId != null &&
                     x.HRMEmployeeCode != null)
                 .ToListAsync();
 
