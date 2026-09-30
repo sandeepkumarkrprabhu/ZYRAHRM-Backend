@@ -271,8 +271,9 @@ namespace Zyra.LantimeServiceApp.JobService
                         context);
                 }
 
-                // Last successful checkout is the baseline for detecting
-                // additional biometric work.
+                // AttendanceLogs records the result of our API attempts; it is
+                // not the source of truth for the employee's actual checkout punch.
+                // The biometric system owns the punch time.
                 var lastSuccessfulCheckout = logs
                     .Where(x =>
                         checkoutStates.Contains(x.AttendanceState) &&
@@ -284,20 +285,30 @@ namespace Zyra.LantimeServiceApp.JobService
                 if (lastSuccessfulCheckout != null &&
                     !string.IsNullOrWhiteSpace(employee.BiometricUserId))
                 {
-                    var result = await ProcessExtraWorkingTimeAsync(
-                        employee,
-                        lastSuccessfulCheckout.CheckTime,
-                        now,
-                        context);
+                    // Retrieve the latest actual punch directly from the biometric
+                    // database. This is the checkout/end time used for reconciliation.
+                    var lastBiometricPunch = await _attendanceProvider.GetLatestPunchAsync(
+                        employee.BiometricUserId!,
+                        now);
 
-                    if (result.HasAdditionalWork)
-                        return result;
+                    if (lastBiometricPunch.HasValue &&
+                        lastBiometricPunch.Value > lastSuccessfulCheckout.CheckTime)
+                    {
+                        var result = await ProcessExtraWorkingTimeAsync(
+                            employee,
+                            lastSuccessfulCheckout.CheckTime,
+                            lastBiometricPunch.Value,
+                            context);
 
-                    if (!result.Success)
-                        return result;
+                        if (result.HasAdditionalWork)
+                            return result;
 
-                    // No biometric work after the successful checkout. The
-                    // employee still needs to be processed by this job.
+                        if (!result.Success)
+                            return result;
+                    }
+
+                    // No biometric punch after the last successful API checkout.
+                    // The employee still needs to be processed by this job.
                     return await ExecuteDirectCheckoutAsync(
                         employee,
                         now,
@@ -397,16 +408,12 @@ namespace Zyra.LantimeServiceApp.JobService
         private async Task<ProcessResult> ProcessExtraWorkingTimeAsync(
             EmployeeMapping employee,
             DateTime lastCheckoutTime,
-            DateTime now,
+            DateTime extraCheckoutTime,
             PerformContext context)
         {
-            var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
-                employee.BiometricUserId!,
-                lastCheckoutTime,
-                now);
-
-            if (!latestPunch.HasValue ||
-                latestPunch.Value <= lastCheckoutTime)
+            // extraCheckoutTime is retrieved directly from the biometric punch
+            // table and is therefore the source-of-truth checkout/end time.
+            if (extraCheckoutTime <= lastCheckoutTime)
             {
                 Log(
                     context,
@@ -418,7 +425,6 @@ namespace Zyra.LantimeServiceApp.JobService
                 return ProcessResult.NoAdditionalWorkResult();
             }
 
-            var extraCheckoutTime = latestPunch.Value;
             var extraMinutes = (int)(extraCheckoutTime - lastCheckoutTime).TotalMinutes;
 
             if (extraMinutes <= 0)
