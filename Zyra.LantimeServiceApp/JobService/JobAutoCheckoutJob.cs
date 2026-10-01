@@ -63,15 +63,25 @@ namespace Zyra.LantimeServiceApp.JobService
                     join autoCheckoutRule in _dbContext.AttendancePolicyRules
                         on master.Id equals autoCheckoutRule.AttendancePolicyId
 
+                    join shiftStartRule in _dbContext.AttendancePolicyRules
+                        .Where(x => x.RuleCode == HRMConstants.SHIFT_START_TIME_NAME)
+                        on master.Id equals shiftStartRule.AttendancePolicyId
+                        into shiftStartRules
+
+                    from shiftStartRule in shiftStartRules.DefaultIfEmpty()
+
                     where master.IsEnable
                           && autoCheckoutRule.RuleCode ==
                              HRMConstants.SHIFT_AUTO_CHECKOUT_NAME
                           && autoCheckoutRule.RuleValue != null
+                          && shiftStartRule != null
+                          && shiftStartRule.RuleValue != null
 
                     select new
                     {
                         Policy = master,
-                        AutoCheckoutTime = autoCheckoutRule.RuleValue
+                        AutoCheckoutTime = autoCheckoutRule.RuleValue,
+                        ShiftStartTime = shiftStartRule.RuleValue
                     }
                 ).ToListAsync();
 
@@ -108,10 +118,18 @@ namespace Zyra.LantimeServiceApp.JobService
                             return null;
                         }
 
+                        if (!TimeSpan.TryParse(
+                                policy.ShiftStartTime,
+                                out var shiftStartTime))
+                        {
+                            return null;
+                        }
+
                         return new
                         {
                             Policy = policy.Policy,
-                            ScheduledTime = scheduledTime
+                            ScheduledTime = scheduledTime,
+                            ShiftStartTime = today.Add(shiftStartTime)
                         };
                     })
                     .Where(x => x != null)
@@ -170,6 +188,7 @@ namespace Zyra.LantimeServiceApp.JobService
                             employee,
                             policy,
                             policyAutoCheckoutTime,
+                            item!.ShiftStartTime,
                             today,
                             context);
                     }
@@ -212,6 +231,7 @@ namespace Zyra.LantimeServiceApp.JobService
             EmployeeMapping employee,
             AttendancePolicyMaster policy,
             DateTime policyAutoCheckoutTime,
+            DateTime shiftStartTime,
             DateTime today,
             PerformContext context)
         {
@@ -245,21 +265,23 @@ namespace Zyra.LantimeServiceApp.JobService
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
+            // The checkout session boundary is the AttendanceLogs check-in
+            // when available. Otherwise use the shift start time. This prevents
+            // a previous day's checkout from being treated as today's checkout.
+            var checkoutSearchFrom = latestCheckIn?.CheckTime ?? shiftStartTime;
+
             var latestCheckout = attendanceLogs
                 .Where(x =>
-                    x.AttendanceState == "checkout" ||
-                    x.AttendanceState == "Auto checkout")
+                    (x.AttendanceState == "checkout" ||
+                     x.AttendanceState == "Auto checkout") &&
+                    x.CheckTime > checkoutSearchFrom)
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
             // AttendanceLogs check-in is optional because attendance may
             // also be marked manually. If a check-in exists, use it as the
-            // lower boundary for biometric punches. Otherwise, query the
-            // biometric device without a check-in boundary.
-            //
-            // A checkout recorded after the latest AttendanceLogs check-in
-            // means that session is already closed. If there is no check-in,
-            // we still need to reconcile the latest biometric punch.
+            // lower boundary for biometric punches. Otherwise, use the shift
+            // start time as the lower boundary.
             if (latestCheckIn != null &&
                 latestCheckout != null &&
                 latestCheckout.CheckTime >= latestCheckIn.CheckTime)
@@ -286,19 +308,17 @@ namespace Zyra.LantimeServiceApp.JobService
                 return;
             }
 
-            // At the moment auto checkout runs, always use the latest biometric
-            // punch available up to NOW. When AttendanceLogs contains a check-in,
-            // only punches after that check-in are eligible. When the check-in is
-            // absent because attendance was marked manually, there is no check-in
-            // boundary and the latest biometric punch is used.
+            // At the moment auto checkout runs, take the latest biometric
+            // punch after the applicable session boundary:
+            // - AttendanceLogs check-in, when available.
+            // - Otherwise the configured shift start time.
+            // This supports both normal and manually-created attendance.
             var autoCheckoutNow = DateTime.Now;
+            var biometricSearchFrom = latestCheckIn?.CheckTime ?? shiftStartTime;
 
-            // Fetch the latest biometric punch first. The biometric system is
-            // the source of truth for the actual checkout punch. We compare
-            // the punch with AttendanceLogs check-in in application code so
-            // the checkout decision is explicit and easy to diagnose.
-            var latestPunch = await _attendanceProvider.GetLatestPunchAsync(
+            var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
                 employee.BiometricUserId,
+                biometricSearchFrom,
                 autoCheckoutNow);
 
             _logger.LogInformation(
@@ -316,13 +336,14 @@ namespace Zyra.LantimeServiceApp.JobService
             context.WriteLine(
                 ConsoleTextColor.Cyan,
                 $"{employee.EmployeeName}: CheckIn={latestCheckIn?.CheckTime:yyyy-MM-dd HH:mm:ss}, " +
+                $"PunchSearchFrom={biometricSearchFrom:yyyy-MM-dd HH:mm:ss}, " +
                 $"ExistingCheckout={latestCheckout?.CheckTime:yyyy-MM-dd HH:mm:ss}, " +
                 $"LatestBiometricPunch={latestPunch?.ToString("yyyy-MM-dd HH:mm:ss") ?? "NONE"}, " +
                 $"PolicyCheckout={policyAutoCheckoutTime:yyyy-MM-dd HH:mm:ss}");
 
             var isValidBiometricCheckout =
                 latestPunch.HasValue &&
-                (latestCheckIn == null || latestPunch.Value > latestCheckIn.CheckTime);
+                latestPunch.Value > biometricSearchFrom;
 
             if (isValidBiometricCheckout)
             {
@@ -362,9 +383,11 @@ namespace Zyra.LantimeServiceApp.JobService
             // No usable biometric punch exists after the check-in.
             // Therefore, use the attendance policy's auto-checkout time.
             _logger.LogInformation(
-                "AutoCheckout fallback for {EmployeeName}: no valid biometric punch. " +
-                "LatestBiometricPunch={LatestPunch}, CheckIn={CheckIn}, PolicyCheckout={PolicyCheckout}",
+                "AutoCheckout fallback for {EmployeeName}: no valid biometric punch after " +
+                "{PunchSearchFrom}. LatestBiometricPunch={LatestPunch}, CheckIn={CheckIn}, " +
+                "PolicyCheckout={PolicyCheckout}",
                 employee.EmployeeName,
+                biometricSearchFrom,
                 latestPunch,
                 latestCheckIn?.CheckTime,
                 policyAutoCheckoutTime);
