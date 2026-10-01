@@ -23,7 +23,7 @@ namespace Zyra.LantimeServiceApp.Services
         public async Task<List<EmployeeMapping>> GetLastPunchTime()
         {
             var query = @"SELECT 
-                CAST(u.badgenumber AS INT) AS EmployeeCode,
+                u.badgenumber AS EmployeeCode,
                 MIN(u.name) AS Name,
                 MAX(CONVERT(TIME, c.CheckTime)) AS LastPunchTime
                 FROM UserInfo u
@@ -40,7 +40,7 @@ namespace Zyra.LantimeServiceApp.Services
             return await _dbService.ExecuteQueryAsync(query,
                         reader =>
                         {
-                            var code = Convert.ToInt32(reader["EmployeeCode"]);
+                            var biometricUserId = NormalizeBiometricUserId(reader["EmployeeCode"]?.ToString());
 
                             DateTime latestCheckout = new DateTime(1900, 1, 1);
 
@@ -52,7 +52,7 @@ namespace Zyra.LantimeServiceApp.Services
 
                             return new EmployeeMapping
                             {
-                                BiometricUserId = code.ToString(),
+                                BiometricUserId = biometricUserId,
                                 EmployeeName = reader["name"]?.ToString(),
                                 LatestCheckoutFromBiometric = latestCheckout,
                                 UpdatedDateTime = DateTime.Now,
@@ -69,6 +69,8 @@ namespace Zyra.LantimeServiceApp.Services
             DateTime checkInTime,
             DateTime upToTime)
         {
+            biometricUserId = NormalizeBiometricUserId(biometricUserId);
+
             const string query = @"
                 SELECT MAX(c.CheckTime) AS LatestPunchTime
                 FROM checkinout c
@@ -119,11 +121,11 @@ namespace Zyra.LantimeServiceApp.Services
                     query,
                     reader =>
                     {
-                        var code = Convert.ToInt32(reader["LantimeCode"]);
+                        var biometricUserId = NormalizeBiometricUserId(reader["LantimeCode"]?.ToString());\n                        var code = Convert.ToInt32(biometricUserId);
 
                         return new EmployeeMapping
                         {
-                            BiometricUserId = code.ToString(),
+                            BiometricUserId = biometricUserId,
                             EmployeeName = reader["name"]?.ToString(),
                             CreatedDateTime = DateTime.Now,
                             CreatedUser = "Job",
@@ -138,12 +140,18 @@ namespace Zyra.LantimeServiceApp.Services
                     commandType: CommandType.Text   //now works
                 );
         }
+
+        private static string NormalizeBiometricUserId(string? biometricUserId)
+        {
+            return (biometricUserId ?? string.Empty).Trim().PadLeft(9, '0');
+        }
+
         public async Task<List<AttendanceDto>> GetAttendanceAsync(DateTime fromDate)
         {
             //And CAST(u.badgenumber AS INT) not in (177,179,180,159,176,1001,178,147,174,168,155,163,175,172,184,167)
             var query = @"
                 SELECT
-                CAST(u.badgenumber AS INT) AS [EmployeeCode],
+                u.badgenumber AS [EmployeeCode],
                 u.name AS [EmployeeName],
                 CAST(c.Checktime AS DATE) AS AttendanceDate,
                 MIN(c.Checktime) AS CheckInTime,
@@ -171,7 +179,7 @@ namespace Zyra.LantimeServiceApp.Services
             query,
             reader => new AttendanceDto
             {
-                EmployeeCode = reader["EmployeeCode"]?.ToString() ?? "",
+                EmployeeCode = NormalizeBiometricUserId(reader["EmployeeCode"]?.ToString()),
                 EmployeeName = reader["EmployeeName"]?.ToString() ?? "",
 
                 CheckInTime = (DateTime)(reader.IsDBNull(reader.GetOrdinal("CheckInTime"))
