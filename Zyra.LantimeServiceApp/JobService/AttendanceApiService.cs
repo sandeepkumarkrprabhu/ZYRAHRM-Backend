@@ -36,16 +36,38 @@ namespace Zyra.LantimeServiceApp.JobService
             try
             {
                 _logger.LogInformation(
-                    "Sending attendance request: {Employee} - {Type} - {Time}",
+                    "Attendance API REQUEST | URL: {Url} | Employee: {Employee} | Type: {Type} | Time: {Time}",
+                    url,
                     request.employee_code,
                     request.type,
                     request.date_time);
 
-                await _httpService.PostAsync(url, request);
+                var result = await _httpService.PostWithResultAsync(url, request);
 
                 _logger.LogInformation(
-                    "Attendance API success for {Employee}",
-                    request.employee_code);
+                    "Attendance API RESPONSE | Employee: {Employee} | Type: {Type} | Time: {Time} | " +
+                    "StatusCode: {StatusCode} | Reason: {Reason} | Success: {Success} | Response: {Response}",
+                    request.employee_code,
+                    request.type,
+                    request.date_time,
+                    result.StatusCode,
+                    result.ReasonPhrase,
+                    result.IsSuccess,
+                    result.ResponseBody);
+
+                if (!result.IsSuccess)
+                {
+                    _logger.LogError(
+                        "Attendance API FAILED | Employee: {Employee} | Type: {Type} | Time: {Time} | " +
+                        "StatusCode: {StatusCode} | Response: {Response}",
+                        request.employee_code,
+                        request.type,
+                        request.date_time,
+                        result.StatusCode,
+                        result.ResponseBody);
+
+                    return false;
+                }
 
                 return true;
             }
@@ -53,18 +75,16 @@ namespace Zyra.LantimeServiceApp.JobService
             {
                 _logger.LogError(
                     ex,
-                    "Attendance API failed for {Employee} | Type: {Type} | Time: {Time}",
+                    "Attendance API EXCEPTION | Employee: {Employee} | Type: {Type} | Time: {Time} | URL: {Url}",
                     request.employee_code,
                     request.type,
-                    request.date_time);
+                    request.date_time,
+                    url);
 
                 return false;
             }
         }
 
-        // -------------------------------------------------
-        // PRIVATE: URL BUILDER
-        // -------------------------------------------------
         private string BuildUrl()
         {
             var baseUrl = _credentials?.Domain?.TrimEnd('/');
