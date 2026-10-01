@@ -76,6 +76,7 @@ namespace ZYRAHRM.IntegrationApp.Controllers
                     id, existingEmployee.EmployeeName, updatedEmployee.EmployeeName);
 
                 // Update fields
+                existingEmployee.BiometricUserId = updatedEmployee.BiometricUserId;
                 existingEmployee.EmployeeName = updatedEmployee.EmployeeName;
                 existingEmployee.HRMEmployeeCode = updatedEmployee.HRMEmployeeCode;
                 existingEmployee.IsActive = updatedEmployee.IsActive;
