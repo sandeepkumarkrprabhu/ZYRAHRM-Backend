@@ -257,38 +257,47 @@ namespace Zyra.LantimeServiceApp.JobService
                     return ProcessResult.SuccessResult();
                 }
 
-                // ============================================================
-                // CASE 1:
-                // A checkout already exists. Compare it with the latest
-                // biometric punch. If the punch is later, reconcile the
-                // additional working period:
-                //
-                //   Check-in  = last attendance checkout
-                //   Checkout  = latest biometric punch
-                // ============================================================
+                // The employee is already checked out when the latest successful
+                // checkout is after the latest check-in. In that case, do not
+                // overwrite the existing checkout. However, if a later biometric
+                // punch exists, it represents another working session.
                 if (latestCheckout != null &&
-                    latestCheckIn != null &&
-                    latestCheckout.CheckTime > latestCheckIn.CheckTime)
+                    (latestCheckIn == null ||
+                     latestCheckout.CheckTime > latestCheckIn.CheckTime))
                 {
-                    // A successful checkout after the latest check-in already
-                    // closes the current attendance session. Do not overwrite
-                    // it with the force/auto checkout time.
-                    Log(
-                        context,
-                        ConsoleTextColor.Gray,
-                        "{0}: latest checkout at {1:yyyy-MM-dd HH:mm:ss} is after check-in {2:yyyy-MM-dd HH:mm:ss}. Existing checkout will be retained.",
-                        employee.EmployeeName,
-                        latestCheckout.CheckTime,
-                        latestCheckIn.CheckTime);
+                    var latestPunchAfterCheckout =
+                        await _attendanceProvider.GetLatestPunchAfterAsync(
+                            employee.BiometricUserId!,
+                            latestCheckout.CheckTime,
+                            now);
 
-                    return ProcessResult.SuccessResult();
+                    if (!latestPunchAfterCheckout.HasValue ||
+                        latestPunchAfterCheckout.Value <= latestCheckout.CheckTime)
+                    {
+                        Log(
+                            context,
+                            ConsoleTextColor.Gray,
+                            "{0}: already checked out at {1:yyyy-MM-dd HH:mm:ss}; no later biometric punch. Nothing to force checkout.",
+                            employee.EmployeeName,
+                            latestCheckout.CheckTime);
+
+                        return ProcessResult.SuccessResult();
+                    }
+
+                    // A new punch after an existing checkout starts a new session:
+                    // previous successful checkout -> new check-in,
+                    // latest biometric punch -> new checkout.
+                    return await ProcessExtraWorkingTimeAsync(
+                        employee,
+                        latestCheckout.CheckTime,
+                        now,
+                        context);
                 }
 
-                // ============================================================
-                // CASE 2:
-                // Only an open check-in exists. The latest biometric punch
-                // becomes the checkout time.
-                // ============================================================
+                // At this point the latest check-in is newer than the latest
+                // checkout (or no checkout exists), so the employee has an open
+                // attendance session and must be closed because the employee is
+                // outside the current active shift.
                 if (latestCheckIn != null)
                 {
                     var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
@@ -296,27 +305,45 @@ namespace Zyra.LantimeServiceApp.JobService
                         latestCheckIn.CheckTime,
                         now);
 
-                    if (!latestPunch.HasValue ||
-                        latestPunch.Value <= latestCheckIn.CheckTime)
+                    if (latestPunch.HasValue &&
+                        latestPunch.Value > latestCheckIn.CheckTime)
                     {
-                        return ProcessResult.Failed(
-                            "Open check-in exists, but no biometric punch was found after the check-in.");
+                        var checkoutSuccess = await SendAttendanceApiAsync(
+                            employee,
+                            HRMConstants.CheckoutState,
+                            latestPunch.Value,
+                            "Company force checkout: latest biometric punch used as checkout",
+                            context);
+
+                        if (!checkoutSuccess)
+                        {
+                            return ProcessResult.Failed(
+                                "Checkout API failed for the latest biometric punch.");
+                        }
+
+                        await SaveAttendanceLogAsync(
+                            employee.BiometricUserId!,
+                            latestPunch.Value,
+                            HRMConstants.CheckoutState,
+                            true,
+                            "Company force checkout used the latest biometric punch as checkout.");
+
+                        Log(
+                            context,
+                            ConsoleTextColor.Green,
+                            "{0}: auto force checkout completed at latest biometric punch {1:yyyy-MM-dd HH:mm:ss}. Check-in={2:yyyy-MM-dd HH:mm:ss}.",
+                            employee.EmployeeName,
+                            latestPunch.Value,
+                            latestCheckIn.CheckTime);
+
+                        return ProcessResult.SuccessResult();
                     }
 
-                    var checkoutSuccess = await SendAttendanceApiAsync(
-                        employee,
-                        HRMConstants.CheckoutState,
-                        latestPunch.Value,
-                        "Open check-in checkout using latest biometric punch",
-                        context);
-
-                    if (!checkoutSuccess)
-                    {
-                        return ProcessResult.Failed(
-                            "Checkout API failed for the latest biometric punch.");
-                    }
-
-                    return ProcessResult.SuccessResult();
+                    // No punch after the open check-in means the employee has not
+                    // checked out. Let the fallback create the force checkout at
+                    // 23:59 for the attendance day.
+                    return ProcessResult.Failed(
+                        "Employee has an open check-in and no biometric punch after check-in; 23:59 force checkout is required.");
                 }
 
                 return ProcessResult.SuccessResult();
@@ -476,7 +503,7 @@ namespace Zyra.LantimeServiceApp.JobService
 
                 await SaveAttendanceLogAsync(
                     employee.BiometricUserId!,
-                    now,
+                    forceCheckoutTime,
                     HRMConstants.ForceCheckoutState,
                     true,
                     $"Company force checkout fallback. Previous failure: {failed.Reason}");
