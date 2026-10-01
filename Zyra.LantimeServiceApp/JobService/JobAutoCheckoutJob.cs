@@ -291,15 +291,42 @@ namespace Zyra.LantimeServiceApp.JobService
             // only punches after that check-in are eligible. When the check-in is
             // absent because attendance was marked manually, there is no check-in
             // boundary and the latest biometric punch is used.
-            var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
-                employee.BiometricUserId,
-                latestCheckIn?.CheckTime ?? DateTime.MinValue,
-                DateTime.Now);
+            var autoCheckoutNow = DateTime.Now;
 
-            if (latestPunch.HasValue &&
-                (latestCheckIn == null || latestPunch.Value > latestCheckIn.CheckTime))
+            // Fetch the latest biometric punch first. The biometric system is
+            // the source of truth for the actual checkout punch. We compare
+            // the punch with AttendanceLogs check-in in application code so
+            // the checkout decision is explicit and easy to diagnose.
+            var latestPunch = await _attendanceProvider.GetLatestPunchAsync(
+                employee.BiometricUserId,
+                autoCheckoutNow);
+
+            _logger.LogInformation(
+                "AutoCheckout decision for {EmployeeName}: BiometricUserId={BiometricUserId}, " +
+                "AttendanceLogCheckIn={CheckIn}, AttendanceLogCheckout={Checkout}, " +
+                "LatestBiometricPunch={LatestPunch}, PolicyCheckout={PolicyCheckout}, Now={Now}",
+                employee.EmployeeName,
+                employee.BiometricUserId,
+                latestCheckIn?.CheckTime,
+                latestCheckout?.CheckTime,
+                latestPunch,
+                policyAutoCheckoutTime,
+                autoCheckoutNow);
+
+            context.WriteLine(
+                ConsoleTextColor.Cyan,
+                $"{employee.EmployeeName}: CheckIn={latestCheckIn?.CheckTime:yyyy-MM-dd HH:mm:ss}, " +
+                $"ExistingCheckout={latestCheckout?.CheckTime:yyyy-MM-dd HH:mm:ss}, " +
+                $"LatestBiometricPunch={latestPunch?.ToString("yyyy-MM-dd HH:mm:ss") ?? "NONE"}, " +
+                $"PolicyCheckout={policyAutoCheckoutTime:yyyy-MM-dd HH:mm:ss}");
+
+            var isValidBiometricCheckout =
+                latestPunch.HasValue &&
+                (latestCheckIn == null || latestPunch.Value > latestCheckIn.CheckTime);
+
+            if (isValidBiometricCheckout)
             {
-                var biometricCheckoutTime = latestPunch.Value;
+                var biometricCheckoutTime = latestPunch!.Value;
 
                 var result = await _apiService.SendAsync(
                     new AttendanceAPIDto
@@ -332,8 +359,15 @@ namespace Zyra.LantimeServiceApp.JobService
                 return;
             }
 
-            // No biometric punch exists after the check-in.
+            // No usable biometric punch exists after the check-in.
             // Therefore, use the attendance policy's auto-checkout time.
+            _logger.LogInformation(
+                "AutoCheckout fallback for {EmployeeName}: no valid biometric punch. " +
+                "LatestBiometricPunch={LatestPunch}, CheckIn={CheckIn}, PolicyCheckout={PolicyCheckout}",
+                employee.EmployeeName,
+                latestPunch,
+                latestCheckIn?.CheckTime,
+                policyAutoCheckoutTime);
             var autoCheckoutResult = await _apiService.SendAsync(
                 new AttendanceAPIDto
                 {
