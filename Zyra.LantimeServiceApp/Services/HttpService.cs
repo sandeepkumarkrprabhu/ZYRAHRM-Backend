@@ -31,10 +31,21 @@ namespace Zyra.LantimeServiceApp.Services
         public async Task PostAsync<T>(string url, T data)
         {
             var requestBody = JsonSerializer.Serialize(data);
+            var employeeCode = GetPropertyValue(data, "employee_code", "EmployeeCode");
+            var biometricUserId = GetPropertyValue(
+                data,
+                "biometric_user_id",
+                "BiometricUserId",
+                "biometricUserId");
+
+            var logDateTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
             var stopwatch = Stopwatch.StartNew();
 
             _logger.LogInformation(
-                "ZYRAHRM API REQUEST | Method=POST | Url={Url} | Request={Request}",
+                "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | BiometricUserId={BiometricUserId} | Method=POST | Url={Url} | Event=REQUEST | Request={Request}",
+                logDateTime,
+                employeeCode ?? "-",
+                biometricUserId ?? "-",
                 url,
                 requestBody);
 
@@ -48,7 +59,10 @@ namespace Zyra.LantimeServiceApp.Services
                 if (response.StatusCode == HttpStatusCode.Unauthorized)
                 {
                     _logger.LogWarning(
-                        "ZYRAHRM API RESPONSE | Method=POST | Url={Url} | StatusCode={StatusCode} | Response={Response} | Action=TokenRefresh",
+                        "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | BiometricUserId={BiometricUserId} | Method=POST | Url={Url} | Event=UNAUTHORIZED | StatusCode={StatusCode} | Response={Response} | Action=TokenRefresh",
+                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"),
+                        employeeCode ?? "-",
+                        biometricUserId ?? "-",
                         url,
                         (int)response.StatusCode,
                         responseBody);
@@ -61,7 +75,10 @@ namespace Zyra.LantimeServiceApp.Services
                 stopwatch.Stop();
 
                 _logger.LogInformation(
-                    "ZYRAHRM API RESPONSE | Method=POST | Url={Url} | StatusCode={StatusCode} | Success={Success} | DurationMs={DurationMs} | Response={Response}",
+                    "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | BiometricUserId={BiometricUserId} | Method=POST | Url={Url} | Event=RESPONSE | StatusCode={StatusCode} | Success={Success} | DurationMs={DurationMs} | Response={Response}",
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"),
+                    employeeCode ?? "-",
+                    biometricUserId ?? "-",
                     url,
                     (int)response.StatusCode,
                     response.IsSuccessStatusCode,
@@ -80,7 +97,10 @@ namespace Zyra.LantimeServiceApp.Services
 
                 _logger.LogError(
                     ex,
-                    "ZYRAHRM API FAILURE | Method=POST | Url={Url} | DurationMs={DurationMs} | Request={Request} | Exception={ExceptionType} | Message={Message}",
+                    "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | BiometricUserId={BiometricUserId} | Method=POST | Url={Url} | Event=FAILURE | DurationMs={DurationMs} | Request={Request} | Exception={ExceptionType} | Message={Message}",
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"),
+                    employeeCode ?? "-",
+                    biometricUserId ?? "-",
                     url,
                     stopwatch.ElapsedMilliseconds,
                     requestBody,
@@ -104,6 +124,29 @@ namespace Zyra.LantimeServiceApp.Services
             request.Content = JsonContent.Create(data);
 
             return await _httpClient.SendAsync(request);
+        }
+
+        private static string? GetPropertyValue<T>(T data, params string[] propertyNames)
+        {
+            if (data == null)
+                return null;
+
+            var type = data.GetType();
+
+            foreach (var propertyName in propertyNames)
+            {
+                var property = type.GetProperty(propertyName);
+
+                if (property?.GetValue(data) is object value)
+                {
+                    var stringValue = value.ToString()?.Trim();
+
+                    if (!string.IsNullOrWhiteSpace(stringValue))
+                        return stringValue;
+                }
+            }
+
+            return null;
         }
     }
 }
