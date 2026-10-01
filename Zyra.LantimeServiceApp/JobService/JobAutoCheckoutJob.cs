@@ -252,30 +252,30 @@ namespace Zyra.LantimeServiceApp.JobService
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
-            if (latestCheckIn == null)
-            {
-                context.WriteLine(
-                    ConsoleTextColor.Gray,
-                    $"Auto checkout skipped for {employee.EmployeeName}: no open check-in found.");
-
-                return;
-            }
-
-            // A checkout after this check-in means this attendance session
-            // has already been closed.
-            if (latestCheckout != null &&
+            // AttendanceLogs check-in is optional because attendance may
+            // also be marked manually. If a check-in exists, use it as the
+            // lower boundary for biometric punches. Otherwise, query the
+            // biometric device without a check-in boundary.
+            //
+            // A checkout recorded after the latest AttendanceLogs check-in
+            // means that session is already closed. If there is no check-in,
+            // we still need to reconcile the latest biometric punch.
+            if (latestCheckIn != null &&
+                latestCheckout != null &&
                 latestCheckout.CheckTime >= latestCheckIn.CheckTime)
             {
                 context.WriteLine(
                     ConsoleTextColor.Gray,
-                    $"{employee.EmployeeName} already checked out at {latestCheckout.CheckTime}");
+                    $"{employee.EmployeeName} already checked out at {latestCheckout.CheckTime:yyyy-MM-dd HH:mm:ss}");
 
                 return;
             }
 
-            // If the employee checked in after the policy auto-checkout time,
-            // never create a checkout earlier than the check-in.
-            if (latestCheckIn.CheckTime >= policyAutoCheckoutTime)
+            // A check-in after the policy time cannot be checked out using an
+            // earlier policy timestamp. However, when there is no AttendanceLogs
+            // check-in, manual attendance may still require biometric reconciliation.
+            if (latestCheckIn != null &&
+                latestCheckIn.CheckTime >= policyAutoCheckoutTime)
             {
                 context.WriteLine(
                     ConsoleTextColor.Gray,
@@ -286,18 +286,18 @@ namespace Zyra.LantimeServiceApp.JobService
                 return;
             }
 
-            // The job is normally invoked around the policy time. Before using
-            // the policy fallback, ALWAYS check the biometric device for the
-            // latest punch after the employee's actual check-in.
-            //
-            // This is intentionally based on the employee's check-in time,
-            // not the calendar date, so overnight punches are also considered.
+            // At the moment auto checkout runs, always use the latest biometric
+            // punch available up to NOW. When AttendanceLogs contains a check-in,
+            // only punches after that check-in are eligible. When the check-in is
+            // absent because attendance was marked manually, there is no check-in
+            // boundary and the latest biometric punch is used.
             var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
                 employee.BiometricUserId,
-                latestCheckIn.CheckTime,
+                latestCheckIn?.CheckTime ?? DateTime.MinValue,
                 DateTime.Now);
 
-            if (latestPunch.HasValue && latestPunch.Value > latestCheckIn.CheckTime)
+            if (latestPunch.HasValue &&
+                (latestCheckIn == null || latestPunch.Value > latestCheckIn.CheckTime))
             {
                 var biometricCheckoutTime = latestPunch.Value;
 
