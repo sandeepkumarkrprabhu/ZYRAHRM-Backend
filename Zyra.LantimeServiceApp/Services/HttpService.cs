@@ -13,7 +13,10 @@ namespace Zyra.LantimeServiceApp.Services
         private readonly ZyraIntegrationCredentials _credentials;
         private readonly ISessionService _sessionService;
 
-        public HttpService(IOptions<ZyraIntegrationCredentials> options, HttpClient httpClient, ISessionService sessionService)
+        public HttpService(
+            IOptions<ZyraIntegrationCredentials> options,
+            HttpClient httpClient,
+            ISessionService sessionService)
         {
             _httpClient = httpClient;
             _credentials = options.Value;
@@ -22,37 +25,52 @@ namespace Zyra.LantimeServiceApp.Services
 
         public async Task PostAsync<T>(string url, T data)
         {
-            // Get token (will auto fetch from cache or regenerate)
-            var token = await _sessionService.GetTokenAsync();
+            var result = await PostWithResultAsync(url, data);
 
-            var request = new HttpRequestMessage(HttpMethod.Post, url);
-            request.Headers.Authorization =
-                new AuthenticationHeaderValue("Bearer", token);
-            request.Content = JsonContent.Create(data);
-
-            var response = await _httpClient.SendAsync(request);
-
-            // Handle expired token (very important)
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            if (!result.IsSuccess)
             {
-                // Force refresh (clear cache inside session service)
-                token = await _sessionService.GetTokenAsync();
-
-                request = new HttpRequestMessage(HttpMethod.Post, url);
-                request.Headers.Authorization =
-                    new AuthenticationHeaderValue("Bearer", token);
-                request.Content = JsonContent.Create(data);
-
-                response = await _httpClient.SendAsync(request);
-            }
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                throw new Exception($"API Error: {response.StatusCode} - {error}");
+                throw new Exception(
+                    $"API Error: {(HttpStatusCode)result.StatusCode} - {result.ResponseBody}");
             }
         }
 
+        public async Task<HttpApiResult> PostWithResultAsync<T>(string url, T data)
+        {
+            var token = await _sessionService.GetTokenAsync();
 
+            var response = await SendPostAsync(url, data, token);
+
+            // Handle expired token.
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                token = await _sessionService.GetTokenAsync();
+                response = await SendPostAsync(url, data, token);
+            }
+
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            return new HttpApiResult
+            {
+                IsSuccess = response.IsSuccessStatusCode,
+                StatusCode = (int)response.StatusCode,
+                ReasonPhrase = response.ReasonPhrase ?? string.Empty,
+                ResponseBody = responseBody
+            };
+        }
+
+        private async Task<HttpResponseMessage> SendPostAsync<T>(
+            string url,
+            T data,
+            string token)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url);
+
+            request.Headers.Authorization =
+                new AuthenticationHeaderValue("Bearer", token);
+
+            request.Content = JsonContent.Create(data);
+
+            return await _httpClient.SendAsync(request);
+        }
     }
 }
