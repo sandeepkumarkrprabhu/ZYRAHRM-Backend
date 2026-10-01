@@ -32,20 +32,13 @@ namespace Zyra.LantimeServiceApp.Services
         {
             var requestBody = JsonSerializer.Serialize(data);
             var employeeCode = GetPropertyValue(data, "employee_code", "EmployeeCode");
-            var biometricUserId = GetPropertyValue(
-                data,
-                "biometric_user_id",
-                "BiometricUserId",
-                "biometricUserId");
-
             var logDateTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
             var stopwatch = Stopwatch.StartNew();
 
             _logger.LogInformation(
-                "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | BiometricUserId={BiometricUserId} | Method=POST | Url={Url} | Event=REQUEST | Request={Request}",
+                "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | Method=POST | Url={Url} | Event=REQUEST | Request={Request}",
                 logDateTime,
                 employeeCode ?? "-",
-                biometricUserId ?? "-",
                 url,
                 requestBody);
 
@@ -59,10 +52,9 @@ namespace Zyra.LantimeServiceApp.Services
                 if (response.StatusCode == HttpStatusCode.Unauthorized)
                 {
                     _logger.LogWarning(
-                        "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | BiometricUserId={BiometricUserId} | Method=POST | Url={Url} | Event=UNAUTHORIZED | StatusCode={StatusCode} | Response={Response} | Action=TokenRefresh",
+                        "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | Method=POST | Url={Url} | Event=UNAUTHORIZED | StatusCode={StatusCode} | Response={Response} | Action=TokenRefresh",
                         DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"),
                         employeeCode ?? "-",
-                        biometricUserId ?? "-",
                         url,
                         (int)response.StatusCode,
                         responseBody);
@@ -75,10 +67,9 @@ namespace Zyra.LantimeServiceApp.Services
                 stopwatch.Stop();
 
                 _logger.LogInformation(
-                    "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | BiometricUserId={BiometricUserId} | Method=POST | Url={Url} | Event=RESPONSE | StatusCode={StatusCode} | Success={Success} | DurationMs={DurationMs} | Response={Response}",
+                    "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | Method=POST | Url={Url} | Event=RESPONSE | StatusCode={StatusCode} | Success={Success} | DurationMs={DurationMs} | Response={Response}",
                     DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"),
                     employeeCode ?? "-",
-                    biometricUserId ?? "-",
                     url,
                     (int)response.StatusCode,
                     response.IsSuccessStatusCode,
@@ -97,10 +88,9 @@ namespace Zyra.LantimeServiceApp.Services
 
                 _logger.LogError(
                     ex,
-                    "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | BiometricUserId={BiometricUserId} | Method=POST | Url={Url} | Event=FAILURE | DurationMs={DurationMs} | Request={Request} | Exception={ExceptionType} | Message={Message}",
+                    "ZYRAHRM_API | DateTime={DateTime} | HRMEmployeeCode={HRMEmployeeCode} | Method=POST | Url={Url} | Event=FAILURE | DurationMs={DurationMs} | Request={Request} | Exception={ExceptionType} | Message={Message}",
                     DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"),
                     employeeCode ?? "-",
-                    biometricUserId ?? "-",
                     url,
                     stopwatch.ElapsedMilliseconds,
                     requestBody,
