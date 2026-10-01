@@ -233,7 +233,9 @@ namespace Zyra.LantimeServiceApp.JobService
                     now);
 
                 var latestCheckIn = logs
-                    .Where(x => x.AttendanceState == HRMConstants.CheckInState)
+                    .Where(x =>
+                        x.AttendanceState == HRMConstants.CheckInState ||
+                        x.AttendanceState == HRMConstants.ManualCheckInState)
                     .OrderByDescending(x => x.CheckTime)
                     .FirstOrDefault();
 
@@ -257,13 +259,71 @@ namespace Zyra.LantimeServiceApp.JobService
                     return ProcessResult.SuccessResult();
                 }
 
+                // If a checkout exists without a successful integration check-in, the
+                // checkout may have come from a manual HRM check-in followed by
+                // a biometric checkout. Record that missing check-in locally as
+                // a manual check-in at the existing checkout time. This does not
+                // call the HRM check-in API because the employee has already
+                // completed the attendance session.
+                if (latestCheckIn == null && latestCheckout != null)
+                {
+                    var manualCheckInExists = await HasAttendanceLogAsync(
+                        employee.BiometricUserId!,
+                        latestCheckout.CheckTime,
+                        HRMConstants.ManualCheckInState);
+
+                    if (!manualCheckInExists)
+                    {
+                        await SaveAttendanceLogAsync(
+                            employee.BiometricUserId!,
+                            latestCheckout.CheckTime,
+                            HRMConstants.ManualCheckInState,
+                            true,
+                            "No successful integration check-in was found. Existing checkout was recorded as a manual check-in reference.");
+                    }
+
+                    Log(
+                        context,
+                        ConsoleTextColor.Yellow,
+                        "{0}: no successful integration check-in found. Recorded manual check-in at existing checkout time {1:yyyy-MM-dd HH:mm:ss}.",
+                        employee.EmployeeName,
+                        latestCheckout.CheckTime);
+
+                    var latestPunchAfterManualCheckout =
+                        await _attendanceProvider.GetLatestPunchAfterAsync(
+                            employee.BiometricUserId!,
+                            latestCheckout.CheckTime,
+                            now);
+
+                    if (!latestPunchAfterManualCheckout.HasValue ||
+                        latestPunchAfterManualCheckout.Value <= latestCheckout.CheckTime)
+                    {
+                        Log(
+                            context,
+                            ConsoleTextColor.Gray,
+                            "{0}: existing checkout retained; no later biometric punch after manual check-in reference.",
+                            employee.EmployeeName);
+
+                        return ProcessResult.SuccessResult();
+                    }
+
+                    // A punch after the existing checkout starts another session.
+                    // The existing checkout becomes the check-in for that extra
+                    // session and the latest biometric punch becomes its checkout.
+                    return await ProcessExtraWorkingTimeAsync(
+                        employee,
+                        latestCheckout.CheckTime,
+                        now,
+                        context);
+                }
+
                 // The employee is already checked out when the latest successful
-                // checkout is after the latest check-in. In that case, do not
-                // overwrite the existing checkout. However, if a later biometric
-                // punch exists, it represents another working session.
+                // checkout is at or after the latest check-in. Do not overwrite
+                // the existing checkout. A later biometric punch represents
+                // another working session.
                 if (latestCheckout != null &&
-                    (latestCheckIn == null ||
-                     latestCheckout.CheckTime > latestCheckIn.CheckTime))
+                    latestCheckIn != null &&
+                    latestCheckout.CheckTime >= latestCheckIn.CheckTime)
                 {
                     var latestPunchAfterCheckout =
                         await _attendanceProvider.GetLatestPunchAfterAsync(
@@ -525,7 +585,8 @@ namespace Zyra.LantimeServiceApp.JobService
                 .AsNoTracking()
                 .Where(x =>
                     x.EmployeeCode == employee.BiometricUserId &&
-                    x.AttendanceState == HRMConstants.CheckInState &&
+                    (x.AttendanceState == HRMConstants.CheckInState ||
+                     x.AttendanceState == HRMConstants.ManualCheckInState) &&
                     x.IsProcessed &&
                     x.Status == "Success" &&
                     x.CheckTime <= now)
@@ -606,6 +667,7 @@ namespace Zyra.LantimeServiceApp.JobService
                     x.IsProcessed &&
                     x.Status == "Success" &&
                     (x.AttendanceState == HRMConstants.CheckInState ||
+                     x.AttendanceState == HRMConstants.ManualCheckInState ||
                      x.AttendanceState == HRMConstants.CheckoutState ||
                      x.AttendanceState == HRMConstants.AutoCheckoutState ||
                      x.AttendanceState == HRMConstants.ForceCheckoutState ||
