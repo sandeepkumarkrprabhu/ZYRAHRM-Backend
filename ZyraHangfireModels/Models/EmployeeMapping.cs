@@ -14,9 +14,15 @@ namespace ZyraHangfireModels.Models
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int Id { get; set; }
 
+        private string _biometricUserId;
+
         [Required]
         [MaxLength(50)]
-        public string BiometricUserId { get; set; }
+        public string BiometricUserId
+        {
+            get => _biometricUserId;
+            set => _biometricUserId = NormalizeBiometricUserId(value);
+        }
 
         [Required]
         [MaxLength(50)]
@@ -46,5 +52,10 @@ namespace ZyraHangfireModels.Models
         public DateTime LastCheckoutFinal { get; set; }
 
         public bool IsCheckoutFinalOverriddenByHR { get; set; }
+
+        private static string NormalizeBiometricUserId(string? biometricUserId)
+        {
+            return (biometricUserId ?? string.Empty).Trim().PadLeft(9, '0');
+        }
     }
 }
