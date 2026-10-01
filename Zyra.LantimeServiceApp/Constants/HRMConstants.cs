@@ -16,5 +16,6 @@ namespace Zyra.LantimeServiceApp.Constants
         public const string ForceCheckoutState = "Force checkout";
         public const string ExtraCheckInState = "Extra checkin";
         public const string ExtraCheckOutState = "Extra checkout";
+        public const string ManualCheckInState = "Manual checkin";
     }
 }
