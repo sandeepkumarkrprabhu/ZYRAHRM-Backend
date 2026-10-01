@@ -1,4 +1,6 @@
 ﻿
+using Zyra.LantimeServiceApp.Models;
+
 namespace Zyra.LantimeServiceApp.Interfaces
 {
     public interface IHttpService
