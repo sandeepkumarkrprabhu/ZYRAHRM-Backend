@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
 using System.Text;
 using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.JobService;
@@ -16,6 +17,19 @@ using ZyraHangfireService;
 using ZYRAHRM.IntegrationApp.HangfireService;
 
 var builder = WebApplication.CreateBuilder(args);
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .WriteTo.Console()
+    .WriteTo.File(
+        Path.Combine(AppContext.BaseDirectory, "Logs", "zyrahrm-api-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        shared: true,
+        flushToDiskInterval: TimeSpan.FromSeconds(1))
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 //Commented for testing the APIs 2907026
 builder.Services.AddHangfire(config =>
@@ -131,10 +145,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Logging services 
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-builder.Logging.AddDebug();
+// Logging is configured through Serilog above. API request/response logs are persisted to Logs/zyrahrm-api-*.log.
 
 // Add services to the container.
 builder.Services.AddControllers();
