@@ -1,7 +1,5 @@
 ﻿using System.Data;
-using System.Timers;
 using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.Extensions.Logging;
 using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.Models;
@@ -80,7 +78,7 @@ namespace Zyra.LantimeServiceApp.Services
             {
                 new SqlParameter("@EmployeeCode", SqlDbType.VarChar, 50)
                 {
-                    Value = biometricUserId
+                    Value = biometricUserId.ToString().PadLeft(9, '0')
                 },
                 new SqlParameter("@UpToTime", SqlDbType.DateTime)
                 {
@@ -117,7 +115,7 @@ namespace Zyra.LantimeServiceApp.Services
             {
                 new SqlParameter("@EmployeeCode", SqlDbType.VarChar, 50)
                 {
-                    Value = biometricUserId
+                    Value = biometricUserId.ToString().PadLeft(9, '0')
                 },
                 new SqlParameter("@CheckInTime", SqlDbType.DateTime)
                 {

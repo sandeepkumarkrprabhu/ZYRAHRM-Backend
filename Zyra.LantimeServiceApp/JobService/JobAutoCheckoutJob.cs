@@ -155,10 +155,10 @@ namespace Zyra.LantimeServiceApp.JobService
                 // 3. PROCESS EACH ELIGIBLE POLICY
                 // ============================================================
 
-                foreach (var item in eligiblePolicies)
+                foreach (var policyRec in eligiblePolicies)
                 {
-                    var policy = item!.Policy;
-                    var policyAutoCheckoutTime = item.ScheduledTime;
+                    var policy = policyRec.Policy;
+                    var policyAutoCheckoutTime = policyRec.ScheduledTime;
 
                     context.WriteLine(
                         ConsoleTextColor.Yellow,
@@ -188,7 +188,7 @@ namespace Zyra.LantimeServiceApp.JobService
                             employee,
                             policy,
                             policyAutoCheckoutTime,
-                            item!.ShiftStartTime,
+                            policyRec.ShiftStartTime,
                             today,
                             context);
                     }
@@ -259,6 +259,15 @@ namespace Zyra.LantimeServiceApp.JobService
                     x.Status == "Success")
                 .OrderByDescending(x => x.CheckTime)
                 .ToListAsync();
+
+            _logger.LogInformation(
+                "Processing auto checkout for {EmployeeName}: BiometricUserId={BiometricUserId}, " +
+                "AttendanceLogsCount={AttendanceLogsCount}, PolicyCheckout={PolicyCheckout}, ShiftStart={ShiftStart}",
+                employee.EmployeeName,
+                employee.BiometricUserId,
+                attendanceLogs.Count,
+                policyAutoCheckoutTime,
+                shiftStartTime);
 
             var latestCheckIn = attendanceLogs
                 .Where(x => x.AttendanceState == "checkin")
