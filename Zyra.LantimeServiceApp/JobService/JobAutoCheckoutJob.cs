@@ -322,7 +322,7 @@ namespace Zyra.LantimeServiceApp.JobService
             // - AttendanceLogs check-in, when available.
             // - Otherwise the configured shift start time.
             // This supports both normal and manually-created attendance.
-            var autoCheckoutNow = DateTime.Now;
+            var autoCheckoutNow = now;
             var biometricSearchFrom = latestCheckIn?.CheckTime ?? shiftStartTime;
 
             var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
