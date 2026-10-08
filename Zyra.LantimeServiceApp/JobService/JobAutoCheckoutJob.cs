@@ -305,7 +305,6 @@ namespace Zyra.LantimeServiceApp.JobService
                         employee,
                         latestCheckout.CheckTime,
                         extraPunch.Value,
-                        policyAutoCheckoutTime,
                         context);
 
                     return;
@@ -449,19 +448,31 @@ namespace Zyra.LantimeServiceApp.JobService
             EmployeeMapping employee,
             DateTime previousCheckoutTime,
             DateTime extraPunchTime,
-            DateTime autoCheckoutTime,
             PerformContext context)
         {
-            // The first punch after a completed session starts the extra
-            // working session. Auto checkout closes that session at the
-            // policy-configured AUTO_CHECKOUT_TIME.
-            var extraCheckInTime = extraPunchTime;
+            // When the employee has already checked out and then punches again,
+            // the later punch represents the end of the extra working session.
+            //
+            // Example:
+            //   18:30 normal checkout
+            //   20:12 biometric punch
+            //
+            // The extra session is therefore:
+            //   18:30 extra check-in -> 20:12 extra checkout
+            //
+            // Do NOT use AUTO_CHECKOUT_TIME as the extra checkout here because
+            // the biometric punch is the actual time the employee stopped
+            // working. AUTO_CHECKOUT_TIME is only the fallback for an open
+            // session where no later biometric checkout punch exists.
+
+            if (extraPunchTime <= previousCheckoutTime)
+                return;
 
             var hasExtraCheckIn = await _dbContext.AttendanceLogs
                 .AsNoTracking()
                 .AnyAsync(x =>
                     x.EmployeeCode == employee.BiometricUserId &&
-                    x.CheckTime == extraCheckInTime &&
+                    x.CheckTime == previousCheckoutTime &&
                     x.AttendanceState == HRMConstants.ExtraCheckInState &&
                     x.IsProcessed &&
                     x.Status == "Success");
@@ -473,14 +484,15 @@ namespace Zyra.LantimeServiceApp.JobService
                     {
                         employee_code = employee.HRMEmployeeCode,
                         type = HRMConstants.CheckInState,
-                        date_time = extraCheckInTime
+                        date_time = previousCheckoutTime
                     });
 
                 if (!checkInSuccess)
                 {
                     context.WriteLine(
                         ConsoleTextColor.Red,
-                        $"Extra-time check-in FAILED for {employee.EmployeeName} at {extraCheckInTime:yyyy-MM-dd HH:mm:ss}");
+                        $"Extra-time check-in FAILED for {employee.EmployeeName} at " +
+                        $"{previousCheckoutTime:yyyy-MM-dd HH:mm:ss}");
 
                     return;
                 }
@@ -488,33 +500,22 @@ namespace Zyra.LantimeServiceApp.JobService
                 _dbContext.AttendanceLogs.Add(new AttendanceLog
                 {
                     EmployeeCode = employee.BiometricUserId,
-                    CheckTime = extraCheckInTime,
+                    CheckTime = previousCheckoutTime,
                     AttendanceState = HRMConstants.ExtraCheckInState,
                     IsProcessed = true,
                     Status = "Success",
                     ErrorMessage =
-                        $"Extra working session started after checkout at {previousCheckoutTime:yyyy-MM-dd HH:mm:ss}"
+                        "Extra working session started at the previous normal checkout time."
                 });
 
                 await _dbContext.SaveChangesAsync();
-            }
-
-            if (autoCheckoutTime <= extraCheckInTime)
-            {
-                context.WriteLine(
-                    ConsoleTextColor.Yellow,
-                    $"Extra-time session for {employee.EmployeeName} cannot be closed at " +
-                    $"{autoCheckoutTime:yyyy-MM-dd HH:mm:ss} because the punch occurred at " +
-                    $"{extraCheckInTime:yyyy-MM-dd HH:mm:ss}.");
-
-                return;
             }
 
             var hasExtraCheckOut = await _dbContext.AttendanceLogs
                 .AsNoTracking()
                 .AnyAsync(x =>
                     x.EmployeeCode == employee.BiometricUserId &&
-                    x.CheckTime == autoCheckoutTime &&
+                    x.CheckTime == extraPunchTime &&
                     x.AttendanceState == HRMConstants.ExtraCheckOutState &&
                     x.IsProcessed &&
                     x.Status == "Success");
@@ -524,7 +525,7 @@ namespace Zyra.LantimeServiceApp.JobService
                 context.WriteLine(
                     ConsoleTextColor.Gray,
                     $"Extra-time checkout already processed for {employee.EmployeeName} at " +
-                    $"{autoCheckoutTime:yyyy-MM-dd HH:mm:ss}");
+                    $"{extraPunchTime:yyyy-MM-dd HH:mm:ss}");
 
                 return;
             }
@@ -534,7 +535,7 @@ namespace Zyra.LantimeServiceApp.JobService
                 {
                     employee_code = employee.HRMEmployeeCode,
                     type = HRMConstants.CheckoutState,
-                    date_time = autoCheckoutTime
+                    date_time = extraPunchTime
                 });
 
             if (!checkOutSuccess)
@@ -542,17 +543,17 @@ namespace Zyra.LantimeServiceApp.JobService
                 context.WriteLine(
                     ConsoleTextColor.Red,
                     $"Extra-time checkout FAILED for {employee.EmployeeName} at " +
-                    $"{autoCheckoutTime:yyyy-MM-dd HH:mm:ss}");
+                    $"{extraPunchTime:yyyy-MM-dd HH:mm:ss}");
 
                 return;
             }
 
-            var extraMinutes = (int)(autoCheckoutTime - extraCheckInTime).TotalMinutes;
+            var extraMinutes = (int)(extraPunchTime - previousCheckoutTime).TotalMinutes;
 
             _dbContext.AttendanceLogs.Add(new AttendanceLog
             {
                 EmployeeCode = employee.BiometricUserId,
-                CheckTime = autoCheckoutTime,
+                CheckTime = extraPunchTime,
                 AttendanceState = HRMConstants.ExtraCheckOutState,
                 IsProcessed = true,
                 Status = "Success",
@@ -565,8 +566,8 @@ namespace Zyra.LantimeServiceApp.JobService
             context.WriteLine(
                 ConsoleTextColor.Green,
                 $"Extra working time SUCCESS for {employee.EmployeeName}: " +
-                $"{extraCheckInTime:yyyy-MM-dd HH:mm:ss} - " +
-                $"{autoCheckoutTime:yyyy-MM-dd HH:mm:ss} ({extraMinutes} minutes).");
+                $"{previousCheckoutTime:yyyy-MM-dd HH:mm:ss} - " +
+                $"{extraPunchTime:yyyy-MM-dd HH:mm:ss} ({extraMinutes} minutes).");
         }
 
         private void LogInformation(PerformContext? context, string message, ConsoleTextColor? color = null)
