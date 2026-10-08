@@ -71,7 +71,7 @@ namespace Zyra.LantimeServiceApp.JobService
                     "Found {0} employees requiring company force checkout processing.",
                     employees.Count);
 
-                var failedEmployees = new List<ForceCheckoutEmployee>();
+                var failedEmployeeCount = 0;
 
                 foreach (var employee in employees)
                 {
@@ -82,43 +82,32 @@ namespace Zyra.LantimeServiceApp.JobService
 
                     if (!result.Success)
                     {
-                        failedEmployees.Add(new ForceCheckoutEmployee
-                        {
-                            Employee = employee,
-                            Reason = result.FailureReason ?? "Attendance processing failed."
-                        });
+                        failedEmployeeCount++;
                     }
                 }
 
-                // Force checkout is the final fallback. It must run only after
-                // every employee has gone through reconciliation/normal checkout.
-                if (failedEmployees.Count > 0)
-                {
-                    Log(
-                        context,
-                        ConsoleTextColor.Yellow,
-                        "Starting force checkout fallback for {0} failed employees.",
-                        failedEmployees.Count);
+                // Final step: after all existing reconciliation/checkout logic
+                // has completed, force checkout every employee outside the active
+                // shift. This also handles an employee who manually checks in
+                // again in ZYRA HRM after a previous checkout.
+                Log(
+                    context,
+                    ConsoleTextColor.Cyan,
+                    "Starting final force checkout for {0} employees outside their active shift.",
+                    employees.Count);
 
-                    await ForceCheckoutFailedEmployeesAsync(
-                        failedEmployees,
-                        now,
-                        context);
-                }
-                else
-                {
-                    Log(
-                        context,
-                        ConsoleTextColor.Green,
-                        "No failed employees. Force checkout fallback was not required.");
-                }
+                await ForceCheckoutEmployeesAsync(
+                    employees,
+                    now,
+                    context);
 
                 Log(
                     context,
                     ConsoleTextColor.Green,
-                    "Company force checkout job completed. Processed={0}, Failed={1}",
+                    "Company force checkout job completed. Processed={0}, Failed={1}, FinalForceCheckoutCandidates={2}",
                     employees.Count,
-                    failedEmployees.Count);
+                    failedEmployeeCount,
+                    employees.Count);
             }
             catch (Exception ex)
             {
@@ -577,23 +566,21 @@ namespace Zyra.LantimeServiceApp.JobService
             return ProcessResult.AdditionalWorkSuccessResult();
         }
 
-        private async Task ForceCheckoutFailedEmployeesAsync(
-            IReadOnlyCollection<ForceCheckoutEmployee> failedEmployees,
+        private async Task ForceCheckoutEmployeesAsync(
+            IReadOnlyCollection<EmployeeMapping> employees,
             DateTime now,
             PerformContext context)
         {
-            foreach (var failed in failedEmployees)
+            foreach (var employee in employees)
             {
-                var employee = failed.Employee;
-
-                // The current attendance API exposes the generic attendance
-                // action endpoint. "Force checkout" is represented internally
-                // by ForceCheckoutState; the API action remains "checkout".
+                // The external attendance API uses the normal "checkout"
+                // action. ForceCheckoutState is retained as the internal
+                // attendance/audit state.
                 var success = await SendAttendanceApiAsync(
                     employee,
                     HRMConstants.ForceCheckoutState,
                     now,
-                    $"Force checkout fallback. Previous processing failed: {failed.Reason}",
+                    "Final company force checkout for employee outside active shift.",
                     context);
 
                 if (!success)
@@ -601,9 +588,8 @@ namespace Zyra.LantimeServiceApp.JobService
                     Log(
                         context,
                         ConsoleTextColor.Red,
-                        "Force checkout FAILED for {0}. Previous failure: {1}",
-                        employee.EmployeeName,
-                        failed.Reason);
+                        "Final force checkout FAILED for {0}.",
+                        employee.EmployeeName);
 
                     continue;
                 }
@@ -615,15 +601,14 @@ namespace Zyra.LantimeServiceApp.JobService
                         now,
                         HRMConstants.ForceCheckoutState,
                         true,
-                        $"Company force checkout fallback. Previous failure: {failed.Reason}");
+                        "Final company force checkout for employee outside active shift.");
                 }
 
                 Log(
                     context,
                     ConsoleTextColor.Green,
-                    "Force checkout SUCCESS for {0}. Previous failure: {1}",
-                    employee.EmployeeName,
-                    failed.Reason);
+                    "Final force checkout SUCCESS for {0}.",
+                    employee.EmployeeName);
             }
         }
 
@@ -762,12 +747,6 @@ namespace Zyra.LantimeServiceApp.JobService
             context.WriteLine(
                 color,
                 formattedMessage);
-        }
-
-        private sealed class ForceCheckoutEmployee
-        {
-            public required EmployeeMapping Employee { get; init; }
-            public required string Reason { get; init; }
         }
 
         private sealed class ProcessResult
