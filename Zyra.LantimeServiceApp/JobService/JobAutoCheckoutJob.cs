@@ -288,24 +288,39 @@ namespace Zyra.LantimeServiceApp.JobService
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
-            // AttendanceLogs check-in is optional because attendance may
-            // also be marked manually. If a check-in exists, use it as the
-            // lower boundary for biometric punches. Otherwise, use the shift
-            // start time as the lower boundary.
-            if (latestCheckIn != null &&
-                latestCheckout != null &&
-                latestCheckout.CheckTime >= latestCheckIn.CheckTime)
+            // A successful checkout closes the normal attendance session.
+            // However, a later biometric punch means the employee started
+            // working again. Reconcile that later work as a separate session
+            // instead of returning early.
+            if (latestCheckout != null)
             {
+                var extraPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
+                    employee.BiometricUserId,
+                    latestCheckout.CheckTime,
+                    executionTime);
+
+                if (extraPunch.HasValue && extraPunch.Value > latestCheckout.CheckTime)
+                {
+                    await ProcessExtraWorkingTimeAsync(
+                        employee,
+                        latestCheckout.CheckTime,
+                        extraPunch.Value,
+                        policyAutoCheckoutTime,
+                        context);
+
+                    return;
+                }
+
                 context.WriteLine(
                     ConsoleTextColor.Gray,
-                    $"{employee.EmployeeName} already checked out at {latestCheckout.CheckTime:yyyy-MM-dd HH:mm:ss}");
+                    $"{employee.EmployeeName} already checked out at " +
+                    $"{latestCheckout.CheckTime:yyyy-MM-dd HH:mm:ss}; no later punch found.");
 
                 return;
             }
 
             // A check-in after the policy time cannot be checked out using an
-            // earlier policy timestamp. However, when there is no AttendanceLogs
-            // check-in, manual attendance may still require biometric reconciliation.
+            // earlier policy timestamp.
             if (latestCheckIn != null &&
                 latestCheckIn.CheckTime >= policyAutoCheckoutTime)
             {
@@ -318,11 +333,8 @@ namespace Zyra.LantimeServiceApp.JobService
                 return;
             }
 
-            // At the moment auto checkout runs, take the latest biometric
-            // punch after the applicable session boundary:
-            // - AttendanceLogs check-in, when available.
-            // - Otherwise the configured shift start time.
-            // This supports both normal and manually-created attendance.
+            // No successful checkout exists. For an open session, use the
+            // latest biometric punch as the actual checkout when available.
             var autoCheckoutNow = executionTime;
             var biometricSearchFrom = latestCheckIn?.CheckTime ?? shiftStartTime;
 
@@ -353,7 +365,8 @@ namespace Zyra.LantimeServiceApp.JobService
 
             var isValidBiometricCheckout =
                 latestPunch.HasValue &&
-                latestPunch.Value > biometricSearchFrom;
+                latestPunch.Value > biometricSearchFrom &&
+                latestPunch.Value <= policyAutoCheckoutTime;
 
             if (isValidBiometricCheckout)
             {
@@ -373,7 +386,7 @@ namespace Zyra.LantimeServiceApp.JobService
                     {
                         EmployeeCode = employee.BiometricUserId,
                         CheckTime = biometricCheckoutTime,
-                        AttendanceState = "checkout",
+                        AttendanceState = HRMConstants.CheckoutState,
                         IsProcessed = true,
                         Status = "Success",
                         ErrorMessage = "Biometric punch used as checkout by auto checkout job"
@@ -390,8 +403,8 @@ namespace Zyra.LantimeServiceApp.JobService
                 return;
             }
 
-            // No usable biometric punch exists after the check-in.
-            // Therefore, use the attendance policy's auto-checkout time.
+            // No usable biometric punch exists before the policy auto-checkout
+            // boundary. Use the policy time as the fallback checkout.
             _logger.LogInformation(
                 "AutoCheckout fallback for {EmployeeName}: no valid biometric punch after " +
                 "{PunchSearchFrom}. LatestBiometricPunch={LatestPunch}, CheckIn={CheckIn}, " +
@@ -401,11 +414,12 @@ namespace Zyra.LantimeServiceApp.JobService
                 latestPunch,
                 latestCheckIn?.CheckTime,
                 policyAutoCheckoutTime);
+
             var autoCheckoutResult = await _apiService.SendAsync(
                 new AttendanceAPIDto
                 {
                     employee_code = employee.HRMEmployeeCode,
-                    type = "checkout",
+                    type = HRMConstants.CheckoutState,
                     date_time = policyAutoCheckoutTime
                 });
 
@@ -415,7 +429,7 @@ namespace Zyra.LantimeServiceApp.JobService
                 {
                     EmployeeCode = employee.BiometricUserId,
                     CheckTime = policyAutoCheckoutTime,
-                    AttendanceState = "Auto checkout",
+                    AttendanceState = HRMConstants.AutoCheckoutState,
                     IsProcessed = true,
                     Status = "Success",
                     ErrorMessage = "Policy auto checkout"
@@ -429,6 +443,130 @@ namespace Zyra.LantimeServiceApp.JobService
                 $"Auto checkout {(autoCheckoutResult ? "SUCCESS" : "FAILED")} " +
                 $"for {employee.EmployeeName} using policy {policy.PolicyName} " +
                 $"at {policyAutoCheckoutTime:yyyy-MM-dd HH:mm:ss}");
+        }
+
+        private async Task ProcessExtraWorkingTimeAsync(
+            EmployeeMapping employee,
+            DateTime previousCheckoutTime,
+            DateTime extraPunchTime,
+            DateTime autoCheckoutTime,
+            PerformContext context)
+        {
+            // The first punch after a completed session starts the extra
+            // working session. Auto checkout closes that session at the
+            // policy-configured AUTO_CHECKOUT_TIME.
+            var extraCheckInTime = extraPunchTime;
+
+            var hasExtraCheckIn = await _dbContext.AttendanceLogs
+                .AsNoTracking()
+                .AnyAsync(x =>
+                    x.EmployeeCode == employee.BiometricUserId &&
+                    x.CheckTime == extraCheckInTime &&
+                    x.AttendanceState == HRMConstants.ExtraCheckInState &&
+                    x.IsProcessed &&
+                    x.Status == "Success");
+
+            if (!hasExtraCheckIn)
+            {
+                var checkInSuccess = await _apiService.SendAsync(
+                    new AttendanceAPIDto
+                    {
+                        employee_code = employee.HRMEmployeeCode,
+                        type = HRMConstants.CheckInState,
+                        date_time = extraCheckInTime
+                    });
+
+                if (!checkInSuccess)
+                {
+                    context.WriteLine(
+                        ConsoleTextColor.Red,
+                        $"Extra-time check-in FAILED for {employee.EmployeeName} at {extraCheckInTime:yyyy-MM-dd HH:mm:ss}");
+
+                    return;
+                }
+
+                _dbContext.AttendanceLogs.Add(new AttendanceLog
+                {
+                    EmployeeCode = employee.BiometricUserId,
+                    CheckTime = extraCheckInTime,
+                    AttendanceState = HRMConstants.ExtraCheckInState,
+                    IsProcessed = true,
+                    Status = "Success",
+                    ErrorMessage =
+                        $"Extra working session started after checkout at {previousCheckoutTime:yyyy-MM-dd HH:mm:ss}"
+                });
+
+                await _dbContext.SaveChangesAsync();
+            }
+
+            if (autoCheckoutTime <= extraCheckInTime)
+            {
+                context.WriteLine(
+                    ConsoleTextColor.Yellow,
+                    $"Extra-time session for {employee.EmployeeName} cannot be closed at " +
+                    $"{autoCheckoutTime:yyyy-MM-dd HH:mm:ss} because the punch occurred at " +
+                    $"{extraCheckInTime:yyyy-MM-dd HH:mm:ss}.");
+
+                return;
+            }
+
+            var hasExtraCheckOut = await _dbContext.AttendanceLogs
+                .AsNoTracking()
+                .AnyAsync(x =>
+                    x.EmployeeCode == employee.BiometricUserId &&
+                    x.CheckTime == autoCheckoutTime &&
+                    x.AttendanceState == HRMConstants.ExtraCheckOutState &&
+                    x.IsProcessed &&
+                    x.Status == "Success");
+
+            if (hasExtraCheckOut)
+            {
+                context.WriteLine(
+                    ConsoleTextColor.Gray,
+                    $"Extra-time checkout already processed for {employee.EmployeeName} at " +
+                    $"{autoCheckoutTime:yyyy-MM-dd HH:mm:ss}");
+
+                return;
+            }
+
+            var checkOutSuccess = await _apiService.SendAsync(
+                new AttendanceAPIDto
+                {
+                    employee_code = employee.HRMEmployeeCode,
+                    type = HRMConstants.CheckoutState,
+                    date_time = autoCheckoutTime
+                });
+
+            if (!checkOutSuccess)
+            {
+                context.WriteLine(
+                    ConsoleTextColor.Red,
+                    $"Extra-time checkout FAILED for {employee.EmployeeName} at " +
+                    $"{autoCheckoutTime:yyyy-MM-dd HH:mm:ss}");
+
+                return;
+            }
+
+            var extraMinutes = (int)(autoCheckoutTime - extraCheckInTime).TotalMinutes;
+
+            _dbContext.AttendanceLogs.Add(new AttendanceLog
+            {
+                EmployeeCode = employee.BiometricUserId,
+                CheckTime = autoCheckoutTime,
+                AttendanceState = HRMConstants.ExtraCheckOutState,
+                IsProcessed = true,
+                Status = "Success",
+                ErrorMessage =
+                    $"Extra working-time checkout. Extra minutes: {extraMinutes}."
+            });
+
+            await _dbContext.SaveChangesAsync();
+
+            context.WriteLine(
+                ConsoleTextColor.Green,
+                $"Extra working time SUCCESS for {employee.EmployeeName}: " +
+                $"{extraCheckInTime:yyyy-MM-dd HH:mm:ss} - " +
+                $"{autoCheckoutTime:yyyy-MM-dd HH:mm:ss} ({extraMinutes} minutes).");
         }
 
         private void LogInformation(PerformContext? context, string message, ConsoleTextColor? color = null)
