@@ -407,6 +407,7 @@ namespace Zyra.LantimeServiceApp.JobService
                 $"{employee.EmployeeName}: open attendance session remains unresolved at " +
                 $"{executionTime:yyyy-MM-dd HH:mm:ss}. No biometric checkout punch found. " +
                 $"Company Force Checkout remains the final safety net.");
+        }
 
         private async Task ProcessExtraWorkingTimeAsync(
             EmployeeMapping employee,
