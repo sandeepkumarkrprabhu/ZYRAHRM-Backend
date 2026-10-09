@@ -16,6 +16,8 @@ public sealed class AssetCategoryWriteRequest
 public sealed class AssetCategoryResponse
 {
     public int AssetCategoryId { get; set; }
+    public int? ClientId { get; set; }
+    public string? ClientName { get; set; }
     public string CategoryName { get; set; } = string.Empty;
     public string? Description { get; set; }
     public bool IsActive { get; set; }
@@ -49,6 +51,9 @@ public sealed class AssetWriteRequest
 
     [EnumDataType(typeof(AssetOwnershipType))]
     public AssetOwnershipType OwnershipType { get; set; } = AssetOwnershipType.Owned;
+
+    /// <summary>Required when OwnershipType is ClientOwned; null for company-owned/rented assets.</summary>
+    public int? ClientId { get; set; }
 
     public DateTime? PurchaseDate { get; set; }
 
