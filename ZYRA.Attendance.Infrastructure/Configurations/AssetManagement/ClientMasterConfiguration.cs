@@ -18,7 +18,6 @@ public sealed class ClientMasterConfiguration : IEntityTypeConfiguration<ClientM
         builder.Property(x => x.UpdatedBy).HasMaxLength(100);
 
         builder.HasIndex(x => x.ClientCode).IsUnique();
-        builder.HasIndex(x => x.ClientName).IsUnique();
 
         builder.HasMany(x => x.EmployeeAssignments)
             .WithOne(x => x.Client)
