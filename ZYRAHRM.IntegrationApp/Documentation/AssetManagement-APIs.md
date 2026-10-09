@@ -47,9 +47,23 @@ List query parameters:
 - `status`: filter by numeric `AssetStatus` enum value.
 - `includeInactive`: default false.
 
-Asset create/update requests include asset code, name, category ID, ownership type, and optional descriptive/purchase/location fields. The API checks that the category exists and is active, validates ownership enum values, and checks asset-code uniqueness. New assets start with `Available` status; clients cannot set the status through this general-purpose write request because status transitions should be handled with assignment/maintenance workflows and status history.
+Asset create/update requests include asset code, name, category ID, ownership type, optional descriptive/purchase/location fields, and optional device administrator account metadata. The API checks that the category exists and is active, validates ownership enum values, and checks asset-code uniqueness. New assets start with `Available` status; clients cannot set the status through this general-purpose write request because status transitions should be handled with assignment/maintenance workflows and status history.
 
 Assets with an active assignment or `Assigned` status cannot be deactivated. Delete endpoints are soft-delete operations: records and historical references remain in the database.
+
+## Device administrator account metadata
+
+Asset registration/update can record `deviceAdminAccountName`, `deviceAdminCredentialSecretReference`, and `deviceAdminAccountNotes`. The username is the Microsoft/device administrator account associated with the laptop. `deviceAdminCredentialSecretReference` must be an identifier or URI for a secret held in an approved secret manager (for example, Azure Key Vault); it is not the password itself. **Do not send or persist raw passwords in the asset API/database.** The normal asset response returns `hasDeviceAdminCredentialReference` instead of the reference value, and never returns any password. Secret vault access policies and credential rotation must be configured separately. If the team has not provisioned a secret vault yet, leave the reference empty rather than storing a password in plain text.
+
+Example additional asset request fields:
+
+```json
+{
+  "deviceAdminAccountName": "device-admin@company.example",
+  "deviceAdminCredentialSecretReference": "asset-admin-credentials/LAP-0001",
+  "deviceAdminAccountNotes": "Company-managed Microsoft account"
+}
+```
 
 ## Response and error behavior
 
