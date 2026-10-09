@@ -116,6 +116,20 @@ public sealed class AssetsController : ControllerBase
         {
             if (!request.ClientId.HasValue)
                 return BadRequest(new { message = "ClientId is required for client-owned assets." });
+            var clientIsActive = await _dbContext.ClientMasters.AnyAsync(
+                x => x.ClientId == request.ClientId.Value && x.IsActive, cancellationToken);
+            if (!clientIsActive)
+                return BadRequest(new { message = "ClientId must reference an existing active client." });
+        }
+        else if (request.ClientId.HasValue)
+        {
+            return BadRequest(new { message = "ClientId can only be set for client-owned assets." });
+        }
+
+        if (request.OwnershipType == AssetOwnershipType.ClientOwned)
+        {
+            if (!request.ClientId.HasValue)
+                return BadRequest(new { message = "ClientId is required for client-owned assets." });
 
             var clientIsActive = await _dbContext.ClientMasters.AnyAsync(
                 x => x.ClientId == request.ClientId.Value && x.IsActive, cancellationToken);
