@@ -62,6 +62,16 @@ public sealed class AssetWriteRequest
 
     [StringLength(1000)]
     public string? Remarks { get; set; }
+
+    [StringLength(256)]
+    public string? DeviceAdminAccountName { get; set; }
+
+    /// <summary>Identifier/reference for a credential stored in a secret vault; never send a password here.</summary>
+    [StringLength(500)]
+    public string? DeviceAdminCredentialSecretReference { get; set; }
+
+    [StringLength(500)]
+    public string? DeviceAdminAccountNotes { get; set; }
 }
 
 public sealed class AssetResponse
@@ -82,6 +92,9 @@ public sealed class AssetResponse
     public DateTime? WarrantyExpiryDate { get; set; }
     public string? Location { get; set; }
     public string? Remarks { get; set; }
+    public string? DeviceAdminAccountName { get; set; }
+    public bool HasDeviceAdminCredentialReference { get; set; }
+    public string? DeviceAdminAccountNotes { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? CreatedBy { get; set; }
