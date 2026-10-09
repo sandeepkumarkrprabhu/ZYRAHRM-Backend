@@ -95,7 +95,7 @@ public sealed class AssetsController : ControllerBase
         var asset = await _dbContext.Assets
             .AsNoTracking()
             .Where(x => x.AssetId == id)
-            .Select(x => ToResponseProjection(x))
+            .Select(AssetResponseProjection)
             .SingleOrDefaultAsync(cancellationToken);
 
         return asset is null ? NotFound() : Ok(asset);
@@ -159,7 +159,7 @@ public sealed class AssetsController : ControllerBase
         var response = await _dbContext.Assets
             .AsNoTracking()
             .Where(x => x.AssetId == asset.AssetId)
-            .Select(x => ToResponseProjection(x))
+            .Select(AssetResponseProjection)
             .SingleAsync(cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id = asset.AssetId }, response);
@@ -228,7 +228,7 @@ public sealed class AssetsController : ControllerBase
         var response = await _dbContext.Assets
             .AsNoTracking()
             .Where(x => x.AssetId == id)
-            .Select(x => ToResponseProjection(x))
+            .Select(AssetResponseProjection)
             .SingleAsync(cancellationToken);
 
         return Ok(response);
