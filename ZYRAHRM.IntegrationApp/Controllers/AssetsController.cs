@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -72,7 +73,7 @@ public sealed class AssetsController : ControllerBase
             .OrderBy(x => x.AssetCode)
             .Skip((pageNumber - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => ToResponseProjection(x))
+            .Select(AssetResponseProjection)
             .ToListAsync(cancellationToken);
 
         return Ok(new PagedResponse<AssetResponse>
@@ -275,7 +276,7 @@ public sealed class AssetsController : ControllerBase
     private static string? NormalizeOptionalText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private static AssetResponse ToResponseProjection(Asset asset) => new()
+    private static readonly Expression<Func<Asset, AssetResponse>> AssetResponseProjection = asset => new AssetResponse
     {
         AssetId = asset.AssetId,
         AssetCode = asset.AssetCode,
