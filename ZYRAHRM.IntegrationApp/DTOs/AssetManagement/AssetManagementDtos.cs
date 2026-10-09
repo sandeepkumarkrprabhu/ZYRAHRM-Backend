@@ -16,8 +16,6 @@ public sealed class AssetCategoryWriteRequest
 public sealed class AssetCategoryResponse
 {
     public int AssetCategoryId { get; set; }
-    public int? ClientId { get; set; }
-    public string? ClientName { get; set; }
     public string CategoryName { get; set; } = string.Empty;
     public string? Description { get; set; }
     public bool IsActive { get; set; }
@@ -82,6 +80,8 @@ public sealed class AssetWriteRequest
 public sealed class AssetResponse
 {
     public int AssetId { get; set; }
+    public int? ClientId { get; set; }
+    public string? ClientName { get; set; }
     public string AssetCode { get; set; } = string.Empty;
     public string AssetName { get; set; } = string.Empty;
     public string? Description { get; set; }
