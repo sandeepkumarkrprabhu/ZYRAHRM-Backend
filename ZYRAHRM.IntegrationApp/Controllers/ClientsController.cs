@@ -80,6 +80,8 @@ public sealed class ClientsController : ControllerBase
     {
         var code = request.ClientCode.Trim();
         var name = request.ClientName.Trim();
+        if (code.Length == 0 || name.Length < 2)
+            return BadRequest(new { message = "ClientCode must not be blank and ClientName must contain at least 2 non-whitespace characters." });
 
         if (await _dbContext.ClientMasters.AnyAsync(x => x.ClientCode == code, cancellationToken))
             return Conflict(new { message = "A client with this code already exists." });
@@ -124,6 +126,10 @@ public sealed class ClientsController : ControllerBase
             return NotFound();
 
         var code = request.ClientCode.Trim();
+        var name = request.ClientName.Trim();
+        if (code.Length == 0 || name.Length < 2)
+            return BadRequest(new { message = "ClientCode must not be blank and ClientName must contain at least 2 non-whitespace characters." });
+
         if (await _dbContext.ClientMasters.AnyAsync(
                 x => x.ClientId != id && x.ClientCode == code, cancellationToken))
         {
@@ -131,7 +137,7 @@ public sealed class ClientsController : ControllerBase
         }
 
         client.ClientCode = code;
-        client.ClientName = request.ClientName.Trim();
+        client.ClientName = name;
         client.Description = Normalize(request.Description);
         client.UpdatedAt = DateTime.UtcNow;
         client.UpdatedBy = CurrentActor();
