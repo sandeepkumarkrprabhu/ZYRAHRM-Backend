@@ -26,6 +26,9 @@ public class Asset
 
     public int AssetCategoryId { get; set; }
 
+    /// <summary>Required for client-owned devices; null for company-owned or rented devices.</summary>
+    public int? ClientId { get; set; }
+
     [MaxLength(100)]
     public string? Manufacturer { get; set; }
 
@@ -76,6 +79,8 @@ public class Asset
     public string? UpdatedBy { get; set; }
 
     public AssetCategory? Category { get; set; }
+
+    public ClientMaster? Client { get; set; }
 
     public ICollection<AssetAssignment> Assignments { get; set; } = new List<AssetAssignment>();
 

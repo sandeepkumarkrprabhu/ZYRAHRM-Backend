@@ -24,6 +24,12 @@ public sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
             .IsRequired();
 
         builder.Property(x => x.Description).HasMaxLength(1000);
+        builder.HasIndex(x => x.ClientId);
+
+        builder.HasOne(x => x.Client)
+            .WithMany(x => x.Assets)
+            .HasForeignKey(x => x.ClientId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.Manufacturer).HasMaxLength(100);
         builder.Property(x => x.ModelNumber).HasMaxLength(100);
         builder.Property(x => x.SerialNumber).HasMaxLength(100);

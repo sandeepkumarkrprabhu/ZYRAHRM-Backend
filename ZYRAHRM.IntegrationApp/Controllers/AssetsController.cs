@@ -112,6 +112,35 @@ public sealed class AssetsController : ControllerBase
         if (!Enum.IsDefined(request.OwnershipType))
             return BadRequest(new { message = "The supplied ownership type is invalid." });
 
+        if (request.OwnershipType == AssetOwnershipType.ClientOwned)
+        {
+            if (!request.ClientId.HasValue)
+                return BadRequest(new { message = "ClientId is required for client-owned assets." });
+            var clientIsActive = await _dbContext.ClientMasters.AnyAsync(
+                x => x.ClientId == request.ClientId.Value && x.IsActive, cancellationToken);
+            if (!clientIsActive)
+                return BadRequest(new { message = "ClientId must reference an existing active client." });
+        }
+        else if (request.ClientId.HasValue)
+        {
+            return BadRequest(new { message = "ClientId can only be set for client-owned assets." });
+        }
+
+        if (request.OwnershipType == AssetOwnershipType.ClientOwned)
+        {
+            if (!request.ClientId.HasValue)
+                return BadRequest(new { message = "ClientId is required for client-owned assets." });
+
+            var clientIsActive = await _dbContext.ClientMasters.AnyAsync(
+                x => x.ClientId == request.ClientId.Value && x.IsActive, cancellationToken);
+            if (!clientIsActive)
+                return BadRequest(new { message = "ClientId must reference an existing active client." });
+        }
+        else if (request.ClientId.HasValue)
+        {
+            return BadRequest(new { message = "ClientId can only be set for client-owned assets." });
+        }
+
         var assetCode = request.AssetCode.Trim();
         if (await _dbContext.Assets.AnyAsync(x => x.AssetCode == assetCode, cancellationToken))
             return Conflict(new { message = "An asset with this asset code already exists." });
@@ -129,6 +158,7 @@ public sealed class AssetsController : ControllerBase
             AssetName = request.AssetName.Trim(),
             Description = NormalizeOptionalText(request.Description),
             AssetCategoryId = request.AssetCategoryId,
+            ClientId = request.ClientId,
             Manufacturer = NormalizeOptionalText(request.Manufacturer),
             ModelNumber = NormalizeOptionalText(request.ModelNumber),
             SerialNumber = NormalizeOptionalText(request.SerialNumber),
@@ -206,6 +236,7 @@ public sealed class AssetsController : ControllerBase
         asset.AssetName = request.AssetName.Trim();
         asset.Description = NormalizeOptionalText(request.Description);
         asset.AssetCategoryId = request.AssetCategoryId;
+        asset.ClientId = request.ClientId;
         asset.Manufacturer = NormalizeOptionalText(request.Manufacturer);
         asset.ModelNumber = NormalizeOptionalText(request.ModelNumber);
         asset.SerialNumber = NormalizeOptionalText(request.SerialNumber);
@@ -289,6 +320,8 @@ public sealed class AssetsController : ControllerBase
         AssetName = asset.AssetName,
         Description = asset.Description,
         AssetCategoryId = asset.AssetCategoryId,
+        ClientId = asset.ClientId,
+        ClientName = asset.Client == null ? null : asset.Client.ClientName,
         CategoryName = asset.Category!.CategoryName,
         Manufacturer = asset.Manufacturer,
         ModelNumber = asset.ModelNumber,
