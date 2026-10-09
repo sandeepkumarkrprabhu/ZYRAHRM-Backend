@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ZYRA.Attendance.Infrastructure;
+using ZYRAHRM.IntegrationApp.DTOs.ClientManagement;
 using ZyraHangfireModels.Models.AssetManagement;
 
 namespace ZYRAHRM.IntegrationApp.Controllers;
@@ -15,80 +16,171 @@ public sealed class ClientEmployeeAssignmentsController : ControllerBase
 
     public ClientEmployeeAssignmentsController(AttendanceDbContext dbContext) => _dbContext = dbContext;
 
-    public sealed class CreateRequest
-    {
-        public int ClientId { get; set; }
-        public int EmployeeMappingId { get; set; }
-        public int? ProjectId { get; set; }
-        public DateTime? EffectiveFrom { get; set; }
-        public string? Remarks { get; set; }
-    }
-
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] int? clientId = null,
-        [FromQuery] int? employeeMappingId = null, CancellationToken cancellationToken = default)
+    [ProducesResponseType(typeof(IReadOnlyList<ClientEmployeeAssignmentResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<ClientEmployeeAssignmentResponse>>> GetAll(
+        [FromQuery] int? clientId = null,
+        [FromQuery] int? employeeMappingId = null,
+        [FromQuery] bool activeOnly = false,
+        CancellationToken cancellationToken = default)
     {
-        var query = _dbContext.ClientEmployeeAssignments.AsNoTracking().AsQueryable();
-        if (clientId.HasValue) query = query.Where(x => x.ClientId == clientId.Value);
-        if (employeeMappingId.HasValue) query = query.Where(x => x.EmployeeMappingId == employeeMappingId.Value);
+        if (clientId is <= 0 || employeeMappingId is <= 0)
+            return BadRequest(new { message = "ClientId and EmployeeMappingId filters must be positive integers." });
+
+        var query = _dbContext.ClientEmployeeAssignments.AsNoTracking();
+        if (clientId.HasValue)
+            query = query.Where(x => x.ClientId == clientId.Value);
+        if (employeeMappingId.HasValue)
+            query = query.Where(x => x.EmployeeMappingId == employeeMappingId.Value);
+        if (activeOnly)
+            query = query.Where(x => x.EffectiveTo == null);
+
         var result = await query.OrderByDescending(x => x.EffectiveFrom)
-            .Select(x => new
+            .Select(x => new ClientEmployeeAssignmentResponse
             {
-                x.ClientEmployeeAssignmentId, x.ClientId, ClientName = x.Client!.ClientName,
-                x.EmployeeMappingId, EmployeeName = x.EmployeeMapping!.EmployeeName,
-                x.ProjectId, x.EffectiveFrom, x.EffectiveTo, x.Remarks, x.AssignedBy
-            }).ToListAsync(cancellationToken);
+                ClientEmployeeAssignmentId = x.ClientEmployeeAssignmentId,
+                ClientId = x.ClientId,
+                ClientName = x.Client!.ClientName,
+                EmployeeMappingId = x.EmployeeMappingId,
+                EmployeeName = x.EmployeeMapping!.EmployeeName,
+                ProjectId = x.ProjectId,
+                EffectiveFrom = x.EffectiveFrom,
+                EffectiveTo = x.EffectiveTo,
+                Remarks = x.Remarks,
+                AssignedBy = x.AssignedBy
+            })
+            .ToListAsync(cancellationToken);
+
         return Ok(result);
     }
 
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] CreateRequest request,
+    [HttpGet("{id:int}")]
+    [ProducesResponseType(typeof(ClientEmployeeAssignmentResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ClientEmployeeAssignmentResponse>> GetById(
+        int id,
         CancellationToken cancellationToken = default)
     {
-        if (request.ClientId <= 0 || request.EmployeeMappingId <= 0)
-            return BadRequest(new { message = "ClientId and EmployeeMappingId are required." });
+        var assignment = await _dbContext.ClientEmployeeAssignments.AsNoTracking()
+            .Where(x => x.ClientEmployeeAssignmentId == id)
+            .Select(x => new ClientEmployeeAssignmentResponse
+            {
+                ClientEmployeeAssignmentId = x.ClientEmployeeAssignmentId,
+                ClientId = x.ClientId,
+                ClientName = x.Client!.ClientName,
+                EmployeeMappingId = x.EmployeeMappingId,
+                EmployeeName = x.EmployeeMapping!.EmployeeName,
+                ProjectId = x.ProjectId,
+                EffectiveFrom = x.EffectiveFrom,
+                EffectiveTo = x.EffectiveTo,
+                Remarks = x.Remarks,
+                AssignedBy = x.AssignedBy
+            })
+            .SingleOrDefaultAsync(cancellationToken);
 
+        return assignment is null ? NotFound() : Ok(assignment);
+    }
+
+    [HttpPost]
+    [ProducesResponseType(typeof(ClientEmployeeAssignmentResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ClientEmployeeAssignmentResponse>> Create(
+        [FromBody] ClientEmployeeAssignmentCreateRequest request,
+        CancellationToken cancellationToken = default)
+    {
         var clientIsActive = await _dbContext.ClientMasters.AnyAsync(
             x => x.ClientId == request.ClientId && x.IsActive, cancellationToken);
         if (!clientIsActive)
-            return BadRequest(new { message = "ClientId must reference an active client." });
+            return BadRequest(new { message = "ClientId must reference an existing active client." });
 
-        var employeeIsActive = await _dbContext.EmployeeMappings.AnyAsync(
-            x => x.Id == request.EmployeeMappingId && x.IsActive, cancellationToken);
-        if (!employeeIsActive)
-            return BadRequest(new { message = "EmployeeMappingId must reference an active employee." });
+        var employee = await _dbContext.EmployeeMappings.AsNoTracking()
+            .Where(x => x.Id == request.EmployeeMappingId && x.IsActive)
+            .Select(x => new { x.Id, x.EmployeeName })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (employee is null)
+            return BadRequest(new { message = "EmployeeMappingId must reference an existing active employee." });
+
+        var effectiveFrom = request.EffectiveFrom ?? DateTime.UtcNow;
+        if (effectiveFrom.Kind == DateTimeKind.Unspecified)
+            effectiveFrom = DateTime.SpecifyKind(effectiveFrom, DateTimeKind.Utc);
+        else
+            effectiveFrom = effectiveFrom.ToUniversalTime();
 
         var alreadyAssigned = await _dbContext.ClientEmployeeAssignments.AnyAsync(
             x => x.ClientId == request.ClientId &&
-                 x.EmployeeMappingId == request.EmployeeMappingId && x.EffectiveTo == null,
+                 x.EmployeeMappingId == request.EmployeeMappingId &&
+                 x.EffectiveTo == null,
             cancellationToken);
         if (alreadyAssigned)
-            return Conflict(new { message = "This employee already has an active allocation for this client." });
+            return Conflict(new { message = "This employee already has an open allocation for this client. End it before creating another." });
 
         var assignment = new ClientEmployeeAssignment
         {
             ClientId = request.ClientId,
             EmployeeMappingId = request.EmployeeMappingId,
             ProjectId = request.ProjectId,
-            EffectiveFrom = request.EffectiveFrom ?? DateTime.UtcNow,
-            Remarks = string.IsNullOrWhiteSpace(request.Remarks) ? null : request.Remarks.Trim(),
-            AssignedBy = User.Identity?.Name
+            EffectiveFrom = effectiveFrom,
+            Remarks = Normalize(request.Remarks),
+            AssignedBy = CurrentActor()
         };
+
         _dbContext.ClientEmployeeAssignments.Add(assignment);
-        try { await _dbContext.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateException) { return Conflict(new { message = "The client allocation could not be saved. Verify the client and employee references." }); }
-        return CreatedAtAction(nameof(GetAll), new { clientId = assignment.ClientId, employeeMappingId = assignment.EmployeeMappingId }, assignment);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            return Conflict(new { message = "The allocation could not be saved. Verify the client/employee references and ensure no duplicate open allocation exists." });
+        }
+
+        var response = new ClientEmployeeAssignmentResponse
+        {
+            ClientEmployeeAssignmentId = assignment.ClientEmployeeAssignmentId,
+            ClientId = assignment.ClientId,
+            ClientName = await _dbContext.ClientMasters
+                .Where(x => x.ClientId == assignment.ClientId)
+                .Select(x => x.ClientName).SingleAsync(cancellationToken),
+            EmployeeMappingId = assignment.EmployeeMappingId,
+            EmployeeName = employee.EmployeeName,
+            ProjectId = assignment.ProjectId,
+            EffectiveFrom = assignment.EffectiveFrom,
+            EffectiveTo = assignment.EffectiveTo,
+            Remarks = assignment.Remarks,
+            AssignedBy = assignment.AssignedBy
+        };
+
+        return CreatedAtAction(nameof(GetById), new { id = assignment.ClientEmployeeAssignmentId }, response);
     }
 
     [HttpPost("{id:int}/end")]
-    public async Task<IActionResult> End(int id, CancellationToken cancellationToken = default)
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> End(
+        int id,
+        CancellationToken cancellationToken = default)
     {
         var assignment = await _dbContext.ClientEmployeeAssignments
             .SingleOrDefaultAsync(x => x.ClientEmployeeAssignmentId == id, cancellationToken);
-        if (assignment is null) return NotFound();
-        if (assignment.EffectiveTo.HasValue) return Conflict(new { message = "This client allocation has already ended." });
-        assignment.EffectiveTo = DateTime.UtcNow;
+        if (assignment is null)
+            return NotFound();
+
+        if (assignment.EffectiveTo.HasValue)
+            return Conflict(new { message = "This client allocation has already ended." });
+
+        var endedAt = DateTime.UtcNow;
+        if (endedAt < assignment.EffectiveFrom)
+            return Conflict(new { message = "This allocation has a future effective date and cannot be ended yet." });
+
+        assignment.EffectiveTo = endedAt;
         await _dbContext.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
+
+    private string? CurrentActor() => User.Identity?.Name;
+
+    private static string? Normalize(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
