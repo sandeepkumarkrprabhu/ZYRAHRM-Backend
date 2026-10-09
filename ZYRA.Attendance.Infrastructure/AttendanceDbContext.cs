@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using ZyraHangfireModels.Models;
+using ZyraHangfireModels.Models.AssetManagement;
 
 namespace ZYRA.Attendance.Infrastructure
 {
@@ -33,10 +34,19 @@ namespace ZYRA.Attendance.Infrastructure
 
         public DbSet<Settings> HRMSettings { get; set; }
 
+        // Asset Management module
+        public DbSet<AssetCategory> AssetCategories { get; set; }
+        public DbSet<Asset> Assets { get; set; }
+        public DbSet<AssetAssignment> AssetAssignments { get; set; }
+        public DbSet<AssetStatusHistory> AssetStatusHistory { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // Keep module-specific EF Core mappings in the infrastructure project.
+            modelBuilder.ApplyConfigurationsFromAssembly(typeof(AttendanceDbContext).Assembly);
             
             // Seed initial data for NavigationMenus, Roles, Permissions, and RolePermissions
             modelBuilder.Entity<NavigationMenus>().HasData(
