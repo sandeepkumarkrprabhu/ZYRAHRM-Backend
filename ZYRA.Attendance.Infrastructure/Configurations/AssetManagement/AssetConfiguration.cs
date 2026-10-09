@@ -29,6 +29,9 @@ public sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
         builder.Property(x => x.SerialNumber).HasMaxLength(100);
         builder.Property(x => x.Location).HasMaxLength(200);
         builder.Property(x => x.Remarks).HasMaxLength(1000);
+        builder.Property(x => x.DeviceAdminAccountName).HasMaxLength(256);
+        builder.Property(x => x.DeviceAdminCredentialSecretReference).HasMaxLength(500);
+        builder.Property(x => x.DeviceAdminAccountNotes).HasMaxLength(500);
         builder.Property(x => x.CreatedBy).HasMaxLength(100);
         builder.Property(x => x.UpdatedBy).HasMaxLength(100);
 
