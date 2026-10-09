@@ -29,7 +29,7 @@ The entity attributes map these tables to the SQL Server `asset` schema:
 - `asset.AssetAssignments`
 - `asset.AssetStatusHistory`
 
-The schema and tables are not created until EF Core configurations are registered and a reviewed migration is generated.
+EF Core configurations are registered through `modelBuilder.ApplyConfigurationsFromAssembly(...)` in the existing `AttendanceDbContext`. Registering the entities does not create database tables by itself; a migration must still be generated and reviewed.
 
 ## Initial business rules to enforce in the service/configuration layer
 
@@ -43,7 +43,9 @@ The schema and tables are not created until EF Core configurations are registere
 
 ## Next steps
 
-1. Add EF Core entity configurations and register the DbSets in `AttendanceDbContext`.
-2. Confirm the relationship to `EmployeeMapping` and configure the unique asset-code and active-assignment constraints.
-3. Generate and review the migration SQL before applying it to any shared database.
-4. Add API/service logic and tests for registration, assignment, return, and concurrent assignment attempts.
+1. **Completed:** Added EF Core configurations under `ZYRA.Attendance.Infrastructure/Configurations/AssetManagement/`.
+2. **Completed:** Registered asset DbSets and assembly-based configuration discovery in `AttendanceDbContext`.
+3. **Completed:** Configured `AssetAssignment.EmployeeMappingId` as a foreign key to the existing `EmployeeMapping.Id`.
+4. **Completed:** Configured a unique asset-code index and SQL Server filtered unique index on active assignments (`ReturnedAt IS NULL`).
+5. **Pending validation:** Build the solution and generate/review the migration SQL before applying it to any shared database.
+6. Add API/service logic and tests for registration, assignment, return, and concurrent assignment attempts.
