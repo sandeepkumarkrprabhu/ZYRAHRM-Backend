@@ -139,6 +139,9 @@ public sealed class AssetsController : ControllerBase
             WarrantyExpiryDate = request.WarrantyExpiryDate,
             Location = NormalizeOptionalText(request.Location),
             Remarks = NormalizeOptionalText(request.Remarks),
+            DeviceAdminAccountName = NormalizeOptionalText(request.DeviceAdminAccountName),
+            DeviceAdminCredentialSecretReference = NormalizeOptionalText(request.DeviceAdminCredentialSecretReference),
+            DeviceAdminAccountNotes = NormalizeOptionalText(request.DeviceAdminAccountNotes),
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             CreatedBy = CurrentActor()
@@ -212,6 +215,9 @@ public sealed class AssetsController : ControllerBase
         asset.WarrantyExpiryDate = request.WarrantyExpiryDate;
         asset.Location = NormalizeOptionalText(request.Location);
         asset.Remarks = NormalizeOptionalText(request.Remarks);
+        asset.DeviceAdminAccountName = NormalizeOptionalText(request.DeviceAdminAccountName);
+        asset.DeviceAdminCredentialSecretReference = NormalizeOptionalText(request.DeviceAdminCredentialSecretReference);
+        asset.DeviceAdminAccountNotes = NormalizeOptionalText(request.DeviceAdminAccountNotes);
         asset.UpdatedAt = DateTime.UtcNow;
         asset.UpdatedBy = CurrentActor();
 
@@ -294,6 +300,9 @@ public sealed class AssetsController : ControllerBase
         WarrantyExpiryDate = asset.WarrantyExpiryDate,
         Location = asset.Location,
         Remarks = asset.Remarks,
+        DeviceAdminAccountName = asset.DeviceAdminAccountName,
+        HasDeviceAdminCredentialReference = asset.DeviceAdminCredentialSecretReference != null,
+        DeviceAdminAccountNotes = asset.DeviceAdminAccountNotes,
         IsActive = asset.IsActive,
         CreatedAt = asset.CreatedAt,
         CreatedBy = asset.CreatedBy,
