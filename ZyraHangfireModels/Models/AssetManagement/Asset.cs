@@ -52,6 +52,17 @@ public class Asset
     [MaxLength(1000)]
     public string? Remarks { get; set; }
 
+    /// <summary>Microsoft account or administrator username configured on this device.</summary>
+    [MaxLength(256)]
+    public string? DeviceAdminAccountName { get; set; }
+
+    /// <summary>Reference to the credential stored in an approved secret vault. Never store the password here.</summary>
+    [MaxLength(500)]
+    public string? DeviceAdminCredentialSecretReference { get; set; }
+
+    [MaxLength(500)]
+    public string? DeviceAdminAccountNotes { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
