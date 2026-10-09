@@ -6,7 +6,8 @@ namespace ZyraHangfireModels.Models.AssetManagement;
 public enum AssetOwnershipType
 {
     Owned = 1,
-    Rented = 2
+    Rented = 2,
+    ClientOwned = 3
 }
 
 /// <summary>
