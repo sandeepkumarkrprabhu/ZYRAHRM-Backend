@@ -116,20 +116,6 @@ public sealed class AssetsController : ControllerBase
         {
             if (!request.ClientId.HasValue)
                 return BadRequest(new { message = "ClientId is required for client-owned assets." });
-            var clientIsActive = await _dbContext.ClientMasters.AnyAsync(
-                x => x.ClientId == request.ClientId.Value && x.IsActive, cancellationToken);
-            if (!clientIsActive)
-                return BadRequest(new { message = "ClientId must reference an existing active client." });
-        }
-        else if (request.ClientId.HasValue)
-        {
-            return BadRequest(new { message = "ClientId can only be set for client-owned assets." });
-        }
-
-        if (request.OwnershipType == AssetOwnershipType.ClientOwned)
-        {
-            if (!request.ClientId.HasValue)
-                return BadRequest(new { message = "ClientId is required for client-owned assets." });
 
             var clientIsActive = await _dbContext.ClientMasters.AnyAsync(
                 x => x.ClientId == request.ClientId.Value && x.IsActive, cancellationToken);
@@ -140,6 +126,28 @@ public sealed class AssetsController : ControllerBase
         {
             return BadRequest(new { message = "ClientId can only be set for client-owned assets." });
         }
+
+        if (request.VendorId.HasValue)
+        {
+            var vendorIsActive = await _dbContext.VendorMasters.AnyAsync(
+                x => x.VendorId == request.VendorId.Value && x.IsActive, cancellationToken);
+            if (!vendorIsActive)
+                return BadRequest(new { message = "VendorId must reference an existing active vendor." });
+        }
+
+        if (request.OwnershipType == AssetOwnershipType.Rented && !request.VendorId.HasValue)
+            return BadRequest(new { message = "VendorId is required for rented assets." });
+
+        if (request.RentalStartDate.HasValue && request.RentalEndDate.HasValue &&
+            request.RentalEndDate.Value.Date < request.RentalStartDate.Value.Date)
+            return BadRequest(new { message = "RentalEndDate cannot be earlier than RentalStartDate." });
+
+        if (request.OwnershipType != AssetOwnershipType.Rented &&
+            (request.RentalStartDate.HasValue || request.RentalEndDate.HasValue || request.RentalCost.HasValue || !string.IsNullOrWhiteSpace(request.RentalCostFrequency)))
+            return BadRequest(new { message = "Rental dates and rental charges can only be set for rented assets." });
+
+        if (request.RentalCost.HasValue && request.RentalCost.Value < 0)
+            return BadRequest(new { message = "RentalCost cannot be negative." });
 
         var assetCode = request.AssetCode.Trim();
         if (await _dbContext.Assets.AnyAsync(x => x.AssetCode == assetCode, cancellationToken))
@@ -159,6 +167,12 @@ public sealed class AssetsController : ControllerBase
             Description = NormalizeOptionalText(request.Description),
             AssetCategoryId = request.AssetCategoryId,
             ClientId = request.ClientId,
+            VendorId = request.VendorId,
+            ProcurementReference = NormalizeOptionalText(request.ProcurementReference),
+            RentalStartDate = request.RentalStartDate,
+            RentalEndDate = request.RentalEndDate,
+            RentalCost = request.RentalCost,
+            RentalCostFrequency = NormalizeOptionalText(request.RentalCostFrequency),
             Manufacturer = NormalizeOptionalText(request.Manufacturer),
             ModelNumber = NormalizeOptionalText(request.ModelNumber),
             SerialNumber = NormalizeOptionalText(request.SerialNumber),
@@ -217,6 +231,38 @@ public sealed class AssetsController : ControllerBase
         if (asset is null)
             return NotFound();
 
+        if (request.OwnershipType == AssetOwnershipType.ClientOwned)
+        {
+            if (!request.ClientId.HasValue)
+                return BadRequest(new { message = "ClientId is required for client-owned assets." });
+            if (!await _dbContext.ClientMasters.AnyAsync(
+                    x => x.ClientId == request.ClientId.Value && x.IsActive, cancellationToken))
+                return BadRequest(new { message = "ClientId must reference an existing active client." });
+        }
+        else if (request.ClientId.HasValue)
+        {
+            return BadRequest(new { message = "ClientId can only be set for client-owned assets." });
+        }
+
+        if (request.VendorId.HasValue &&
+            !await _dbContext.VendorMasters.AnyAsync(
+                x => x.VendorId == request.VendorId.Value && x.IsActive, cancellationToken))
+            return BadRequest(new { message = "VendorId must reference an existing active vendor." });
+
+        if (request.OwnershipType == AssetOwnershipType.Rented && !request.VendorId.HasValue)
+            return BadRequest(new { message = "VendorId is required for rented assets." });
+
+        if (request.RentalStartDate.HasValue && request.RentalEndDate.HasValue &&
+            request.RentalEndDate.Value.Date < request.RentalStartDate.Value.Date)
+            return BadRequest(new { message = "RentalEndDate cannot be earlier than RentalStartDate." });
+
+        if (request.OwnershipType != AssetOwnershipType.Rented &&
+            (request.RentalStartDate.HasValue || request.RentalEndDate.HasValue || request.RentalCost.HasValue || !string.IsNullOrWhiteSpace(request.RentalCostFrequency)))
+            return BadRequest(new { message = "Rental dates and rental charges can only be set for rented assets." });
+
+        if (request.RentalCost.HasValue && request.RentalCost.Value < 0)
+            return BadRequest(new { message = "RentalCost cannot be negative." });
+
         var assetCode = request.AssetCode.Trim();
         if (await _dbContext.Assets.AnyAsync(
                 x => x.AssetId != id && x.AssetCode == assetCode,
@@ -237,6 +283,12 @@ public sealed class AssetsController : ControllerBase
         asset.Description = NormalizeOptionalText(request.Description);
         asset.AssetCategoryId = request.AssetCategoryId;
         asset.ClientId = request.ClientId;
+        asset.VendorId = request.VendorId;
+        asset.ProcurementReference = NormalizeOptionalText(request.ProcurementReference);
+        asset.RentalStartDate = request.RentalStartDate;
+        asset.RentalEndDate = request.RentalEndDate;
+        asset.RentalCost = request.RentalCost;
+        asset.RentalCostFrequency = NormalizeOptionalText(request.RentalCostFrequency);
         asset.Manufacturer = NormalizeOptionalText(request.Manufacturer);
         asset.ModelNumber = NormalizeOptionalText(request.ModelNumber);
         asset.SerialNumber = NormalizeOptionalText(request.SerialNumber);
@@ -322,6 +374,14 @@ public sealed class AssetsController : ControllerBase
         AssetCategoryId = asset.AssetCategoryId,
         ClientId = asset.ClientId,
         ClientName = asset.Client == null ? null : asset.Client.ClientName,
+        VendorId = asset.VendorId,
+        VendorCode = asset.Vendor == null ? null : asset.Vendor.VendorCode,
+        VendorName = asset.Vendor == null ? null : asset.Vendor.VendorName,
+        ProcurementReference = asset.ProcurementReference,
+        RentalStartDate = asset.RentalStartDate,
+        RentalEndDate = asset.RentalEndDate,
+        RentalCost = asset.RentalCost,
+        RentalCostFrequency = asset.RentalCostFrequency,
         CategoryName = asset.Category!.CategoryName,
         Manufacturer = asset.Manufacturer,
         ModelNumber = asset.ModelNumber,
