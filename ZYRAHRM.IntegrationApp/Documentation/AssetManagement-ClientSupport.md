@@ -98,14 +98,13 @@ Vendor codes must be unique. Deactivating a vendor is blocked while it has activ
 Assets can optionally reference a vendor using `VendorId`. The asset API also records:
 - `ProcurementReference`: purchase order, invoice, or rental agreement reference.
 - `RentalStartDate` and `RentalEndDate`: rental period.
-- `RentalCost` and `RentalCostFrequency`: agreed rental amount and frequency (for example, monthly).
 
 Rules:
 1. `VendorId` must reference an active vendor when provided.
 2. `VendorId` is required for assets whose `OwnershipType` is `Rented`.
-3. Rental dates and rental charges are only accepted for rented assets; end date cannot precede start date.
+3. Rental dates are only accepted for rented assets; end date cannot precede start date.
 4. Vendor and client are different relationships. A vendor can supply/rent an asset used by an employee working on a client's project.
-5. Vendor information is tracked at asset level for now. If you later need multiple invoices, rental renewals, partial returns, or contract-level payment history, add dedicated procurement/rental-contract tables instead of overwriting the asset's current details.
+5. Vendor information is tracked at asset level for now. Rental charges, payment schedules and accounting are outside the current scope.
 
 ## Migration and validation
 EF Core model/configuration changes require a migration before deployment. From the solution directory, generate and review the migration:
