@@ -143,11 +143,8 @@ public sealed class AssetsController : ControllerBase
             return BadRequest(new { message = "RentalEndDate cannot be earlier than RentalStartDate." });
 
         if (request.OwnershipType != AssetOwnershipType.Rented &&
-            (request.RentalStartDate.HasValue || request.RentalEndDate.HasValue || request.RentalCost.HasValue || !string.IsNullOrWhiteSpace(request.RentalCostFrequency)))
-            return BadRequest(new { message = "Rental dates and rental charges can only be set for rented assets." });
-
-        if (request.RentalCost.HasValue && request.RentalCost.Value < 0)
-            return BadRequest(new { message = "RentalCost cannot be negative." });
+            (request.RentalStartDate.HasValue || request.RentalEndDate.HasValue))
+            return BadRequest(new { message = "Rental dates can only be set for rented assets." });
 
         var assetCode = request.AssetCode.Trim();
         if (await _dbContext.Assets.AnyAsync(x => x.AssetCode == assetCode, cancellationToken))
@@ -171,15 +168,12 @@ public sealed class AssetsController : ControllerBase
             ProcurementReference = NormalizeOptionalText(request.ProcurementReference),
             RentalStartDate = request.RentalStartDate,
             RentalEndDate = request.RentalEndDate,
-            RentalCost = request.RentalCost,
-            RentalCostFrequency = NormalizeOptionalText(request.RentalCostFrequency),
             Manufacturer = NormalizeOptionalText(request.Manufacturer),
             ModelNumber = NormalizeOptionalText(request.ModelNumber),
             SerialNumber = NormalizeOptionalText(request.SerialNumber),
             OwnershipType = request.OwnershipType,
             Status = AssetStatus.Available,
             PurchaseDate = request.PurchaseDate,
-            PurchaseCost = request.PurchaseCost,
             WarrantyExpiryDate = request.WarrantyExpiryDate,
             Location = NormalizeOptionalText(request.Location),
             Remarks = NormalizeOptionalText(request.Remarks),
@@ -257,11 +251,8 @@ public sealed class AssetsController : ControllerBase
             return BadRequest(new { message = "RentalEndDate cannot be earlier than RentalStartDate." });
 
         if (request.OwnershipType != AssetOwnershipType.Rented &&
-            (request.RentalStartDate.HasValue || request.RentalEndDate.HasValue || request.RentalCost.HasValue || !string.IsNullOrWhiteSpace(request.RentalCostFrequency)))
-            return BadRequest(new { message = "Rental dates and rental charges can only be set for rented assets." });
-
-        if (request.RentalCost.HasValue && request.RentalCost.Value < 0)
-            return BadRequest(new { message = "RentalCost cannot be negative." });
+            (request.RentalStartDate.HasValue || request.RentalEndDate.HasValue))
+            return BadRequest(new { message = "Rental dates can only be set for rented assets." });
 
         var assetCode = request.AssetCode.Trim();
         if (await _dbContext.Assets.AnyAsync(
@@ -287,14 +278,11 @@ public sealed class AssetsController : ControllerBase
         asset.ProcurementReference = NormalizeOptionalText(request.ProcurementReference);
         asset.RentalStartDate = request.RentalStartDate;
         asset.RentalEndDate = request.RentalEndDate;
-        asset.RentalCost = request.RentalCost;
-        asset.RentalCostFrequency = NormalizeOptionalText(request.RentalCostFrequency);
         asset.Manufacturer = NormalizeOptionalText(request.Manufacturer);
         asset.ModelNumber = NormalizeOptionalText(request.ModelNumber);
         asset.SerialNumber = NormalizeOptionalText(request.SerialNumber);
         asset.OwnershipType = request.OwnershipType;
         asset.PurchaseDate = request.PurchaseDate;
-        asset.PurchaseCost = request.PurchaseCost;
         asset.WarrantyExpiryDate = request.WarrantyExpiryDate;
         asset.Location = NormalizeOptionalText(request.Location);
         asset.Remarks = NormalizeOptionalText(request.Remarks);
@@ -380,8 +368,6 @@ public sealed class AssetsController : ControllerBase
         ProcurementReference = asset.ProcurementReference,
         RentalStartDate = asset.RentalStartDate,
         RentalEndDate = asset.RentalEndDate,
-        RentalCost = asset.RentalCost,
-        RentalCostFrequency = asset.RentalCostFrequency,
         CategoryName = asset.Category!.CategoryName,
         Manufacturer = asset.Manufacturer,
         ModelNumber = asset.ModelNumber,
@@ -389,7 +375,6 @@ public sealed class AssetsController : ControllerBase
         OwnershipType = asset.OwnershipType,
         Status = asset.Status,
         PurchaseDate = asset.PurchaseDate,
-        PurchaseCost = asset.PurchaseCost,
         WarrantyExpiryDate = asset.WarrantyExpiryDate,
         Location = asset.Location,
         Remarks = asset.Remarks,

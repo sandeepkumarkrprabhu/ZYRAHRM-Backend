@@ -42,13 +42,6 @@ public class Asset
     /// <summary>Expected rental return/contract end date, when applicable.</summary>
     public DateTime? RentalEndDate { get; set; }
 
-    /// <summary>Recurring rental charge, if the vendor contract has one.</summary>
-    [Column(TypeName = "decimal(18, 2)")]
-    public decimal? RentalCost { get; set; }
-
-    [MaxLength(100)]
-    public string? RentalCostFrequency { get; set; }
-
     [MaxLength(100)]
     public string? Manufacturer { get; set; }
 
@@ -63,9 +56,6 @@ public class Asset
     public AssetStatus Status { get; set; } = AssetStatus.Available;
 
     public DateTime? PurchaseDate { get; set; }
-
-    [Column(TypeName = "decimal(18, 2)")]
-    public decimal? PurchaseCost { get; set; }
 
     public DateTime? WarrantyExpiryDate { get; set; }
 

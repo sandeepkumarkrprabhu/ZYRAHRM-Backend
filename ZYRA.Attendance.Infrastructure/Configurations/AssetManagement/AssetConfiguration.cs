@@ -33,8 +33,6 @@ public sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property(x => x.ProcurementReference).HasMaxLength(100);
-        builder.Property(x => x.RentalCost).HasColumnType("decimal(18,2)");
-        builder.Property(x => x.RentalCostFrequency).HasMaxLength(100);
 
         builder.HasOne(x => x.Client)
             .WithMany(x => x.Assets)
@@ -58,9 +56,6 @@ public sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
         builder.Property(x => x.Status)
             .HasConversion<int>()
             .IsRequired();
-
-        builder.Property(x => x.PurchaseCost)
-            .HasColumnType("decimal(18,2)");
 
         builder.HasIndex(x => x.SerialNumber);
 
