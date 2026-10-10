@@ -57,9 +57,6 @@ public sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
             .HasConversion<int>()
             .IsRequired();
 
-        builder.Property(x => x.PurchaseCost)
-            .HasColumnType("decimal(18,2)");
-
         builder.HasIndex(x => x.SerialNumber);
 
         builder.HasMany(x => x.Assignments)
