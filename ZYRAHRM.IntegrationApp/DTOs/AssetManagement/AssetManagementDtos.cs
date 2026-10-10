@@ -155,7 +155,6 @@ public sealed class AssetResponse
     public DateTime? RentalEndDate { get; set; }
     public decimal? RentalCost { get; set; }
     public string? RentalCostFrequency { get; set; }
-    public DateTime? PurchaseDate { get; set; }
     public string AssetCode { get; set; } = string.Empty;
     public string AssetName { get; set; } = string.Empty;
     public string? Description { get; set; }
