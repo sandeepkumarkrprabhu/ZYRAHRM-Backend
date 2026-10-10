@@ -111,7 +111,7 @@ Rules:
 EF Core model/configuration changes require a migration before deployment. From the solution directory, generate and review the migration:
 
 ```bash
-dotnet ef migrations add AddClientAssetSupport --project ZYRA.Attendance.Infrastructure --startup-project ZYRAHRM.IntegrationApp
+dotnet ef migrations add AddVendorAssetTracking --project ZYRA.Attendance.Infrastructure --startup-project ZYRAHRM.IntegrationApp
 dotnet build
 dotnet test
 ```
