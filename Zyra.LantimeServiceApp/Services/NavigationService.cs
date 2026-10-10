@@ -49,6 +49,9 @@ namespace Zyra.LantimeServiceApp.Services
                 select new NavigationMenuDto
                 {
                     MenuId = menu.MenuId,
+                    ModuleId = menu.ModuleId,
+                    ModuleCode = _dbContext.Modules.Where(module => module.ModuleId == menu.ModuleId).Select(module => module.ModuleCode).FirstOrDefault(),
+                    ModuleName = _dbContext.Modules.Where(module => module.ModuleId == menu.ModuleId).Select(module => module.ModuleName).FirstOrDefault(),
                     MenuKey = menu.MenuKey,
                     MenuLabel = menu.MenuLabel,
                     IconName = menu.IconName,
