@@ -112,12 +112,6 @@ public sealed class AssetWriteRequest
 
     public DateTime? RentalEndDate { get; set; }
 
-    [Range(typeof(decimal), "0", "9999999999999999.99")]
-    public decimal? RentalCost { get; set; }
-
-    [StringLength(100)]
-    public string? RentalCostFrequency { get; set; }
-
     public DateTime? PurchaseDate { get; set; }
 
     [Range(typeof(decimal), "0", "9999999999999999.99")]
@@ -153,8 +147,6 @@ public sealed class AssetResponse
     public string? ProcurementReference { get; set; }
     public DateTime? RentalStartDate { get; set; }
     public DateTime? RentalEndDate { get; set; }
-    public decimal? RentalCost { get; set; }
-    public string? RentalCostFrequency { get; set; }
     public string AssetCode { get; set; } = string.Empty;
     public string AssetName { get; set; } = string.Empty;
     public string? Description { get; set; }
