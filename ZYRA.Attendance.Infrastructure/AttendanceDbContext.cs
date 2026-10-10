@@ -37,6 +37,7 @@ namespace ZYRA.Attendance.Infrastructure
         // Asset Management module
         public DbSet<ClientMaster> ClientMasters { get; set; }
         public DbSet<ClientEmployeeAssignment> ClientEmployeeAssignments { get; set; }
+        public DbSet<VendorMaster> VendorMasters { get; set; }
         public DbSet<AssetCategory> AssetCategories { get; set; }
         public DbSet<Asset> Assets { get; set; }
         public DbSet<AssetAssignment> AssetAssignments { get; set; }
