@@ -114,9 +114,6 @@ public sealed class AssetWriteRequest
 
     public DateTime? PurchaseDate { get; set; }
 
-    [Range(typeof(decimal), "0", "9999999999999999.99")]
-    public decimal? PurchaseCost { get; set; }
-
     public DateTime? WarrantyExpiryDate { get; set; }
 
     [StringLength(200)]
@@ -158,7 +155,6 @@ public sealed class AssetResponse
     public AssetOwnershipType OwnershipType { get; set; }
     public AssetStatus Status { get; set; }
     public DateTime? PurchaseDate { get; set; }
-    public decimal? PurchaseCost { get; set; }
     public DateTime? WarrantyExpiryDate { get; set; }
     public string? Location { get; set; }
     public string? Remarks { get; set; }
