@@ -23,6 +23,8 @@ namespace ZYRA.Attendance.Infrastructure
 
         public DbSet<NavigationMenus> NavigationMenus { get; set; }
 
+        public DbSet<Modules> Modules { get; set; }
+
         public DbSet<Roles> Roles { get; set; }
         public DbSet<Permissions> Permissions { get; set; }
 
@@ -52,12 +54,20 @@ namespace ZYRA.Attendance.Infrastructure
             // Keep module-specific EF Core mappings in the infrastructure project.
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(AttendanceDbContext).Assembly);
             
+            modelBuilder.Entity<Modules>().HasData(
+                new Modules { ModuleId = 1, ModuleCode = "HRM", ModuleName = "Human Resource Management", Description = "Employee and HR administration", IsActive = true },
+                new Modules { ModuleId = 2, ModuleCode = "ATTENDANCE", ModuleName = "Attendance Management", Description = "Attendance policies and reporting", IsActive = true },
+                new Modules { ModuleId = 3, ModuleCode = "INTEGRATION", ModuleName = "Integration Management", Description = "Biometric synchronization and integrations", IsActive = true },
+                new Modules { ModuleId = 4, ModuleCode = "ADMIN", ModuleName = "System Administration", Description = "Audit and global system configuration", IsActive = true }
+            );
+
             // Seed initial data for NavigationMenus, Roles, Permissions, and RolePermissions
             modelBuilder.Entity<NavigationMenus>().HasData(
                     new NavigationMenus
                     {
                         MenuId = 1,
                         MenuKey = "dashboard",
+                        ModuleId = 1,
                         MenuLabel = "Dashboard",
                         IconName = "LayoutDashboard",
                         DisplayOrder = 1,
@@ -68,6 +78,7 @@ namespace ZYRA.Attendance.Infrastructure
                     {
                         MenuId = 2,
                         MenuKey = "employees",
+                        ModuleId = 1,
                         MenuLabel = "Employees",
                         IconName = "Users",
                         DisplayOrder = 2,
@@ -78,6 +89,7 @@ namespace ZYRA.Attendance.Infrastructure
                     {
                         MenuId = 3,
                         MenuKey = "hr-users",
+                        ModuleId = 4,
                         MenuLabel = "User Access & HR",
                         IconName = "ShieldCheck",
                         DisplayOrder = 3,
@@ -88,6 +100,7 @@ namespace ZYRA.Attendance.Infrastructure
                     {
                         MenuId = 4,
                         MenuKey = "audit-logs",
+                        ModuleId = 4,
                         MenuLabel = "Audit Logs",
                         IconName = "FileText",
                         DisplayOrder = 4,
@@ -98,6 +111,7 @@ namespace ZYRA.Attendance.Infrastructure
                     {
                         MenuId = 5,
                         MenuKey = "zyra-api",
+                        ModuleId = 3,
                         MenuLabel = "Hangfire & ZYRA API",
                         IconName = "RefreshCw",
                         DisplayOrder = 5,
@@ -108,6 +122,7 @@ namespace ZYRA.Attendance.Infrastructure
                     {
                         MenuId = 7,
                         MenuKey = "settings",
+                        ModuleId = 4,
                         MenuLabel = "Settings",
                         IconName = "Settings",
                         DisplayOrder = 7,
@@ -118,6 +133,7 @@ namespace ZYRA.Attendance.Infrastructure
                     {
                         MenuId = 8,
                         MenuKey = "attpolicy",
+                        ModuleId = 2,
                         MenuLabel = "Attendance Policies",
                         IconName = "Settings",
                         DisplayOrder = 3,
