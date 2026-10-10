@@ -9,7 +9,6 @@ using ZyraHangfireModels.Models.AssetManagement;
 namespace ZYRAHRM.IntegrationApp.Controllers;
 
 [ApiController]
-[Authorize]
 [Route("api/assets")]
 public sealed class AssetsController : ControllerBase
 {

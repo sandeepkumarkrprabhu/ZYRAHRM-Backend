@@ -8,7 +8,6 @@ using ZyraHangfireModels.Models.AssetManagement;
 namespace ZYRAHRM.IntegrationApp.Controllers;
 
 [ApiController]
-[Authorize]
 [Route("api/vendors")]
 public sealed class VendorsController : ControllerBase
 {

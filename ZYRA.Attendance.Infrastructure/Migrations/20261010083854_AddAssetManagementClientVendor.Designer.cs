@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ZYRA.Attendance.Infrastructure;
 
@@ -11,9 +12,11 @@ using ZYRA.Attendance.Infrastructure;
 namespace ZYRA.Attendance.Infrastructure.Migrations
 {
     [DbContext(typeof(AttendanceDbContext))]
-    partial class AttendanceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261010083854_AddAssetManagementClientVendor")]
+    partial class AddAssetManagementClientVendor
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
