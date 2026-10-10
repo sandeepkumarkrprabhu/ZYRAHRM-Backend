@@ -25,6 +25,16 @@ public sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
 
         builder.Property(x => x.Description).HasMaxLength(1000);
         builder.HasIndex(x => x.ClientId);
+        builder.HasIndex(x => x.VendorId);
+
+        builder.HasOne(x => x.Vendor)
+            .WithMany(x => x.Assets)
+            .HasForeignKey(x => x.VendorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property(x => x.ProcurementReference).HasMaxLength(100);
+        builder.Property(x => x.RentalCost).HasColumnType("decimal(18,2)");
+        builder.Property(x => x.RentalCostFrequency).HasMaxLength(100);
 
         builder.HasOne(x => x.Client)
             .WithMany(x => x.Assets)
