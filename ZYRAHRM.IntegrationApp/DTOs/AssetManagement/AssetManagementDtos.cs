@@ -22,6 +22,55 @@ public sealed class AssetCategoryResponse
     public DateTime CreatedAt { get; set; }
 }
 
+public sealed class VendorWriteRequest
+{
+    [Required]
+    [StringLength(50, MinimumLength = 1)]
+    public string VendorCode { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(150, MinimumLength = 2)]
+    public string VendorName { get; set; } = string.Empty;
+
+    [StringLength(150)]
+    public string? ContactPerson { get; set; }
+
+    [Phone]
+    [StringLength(30)]
+    public string? PhoneNumber { get; set; }
+
+    [EmailAddress]
+    [StringLength(254)]
+    public string? EmailAddress { get; set; }
+
+    [StringLength(1000)]
+    public string? Address { get; set; }
+
+    [StringLength(50)]
+    public string? TaxRegistrationNumber { get; set; }
+
+    [StringLength(1000)]
+    public string? Notes { get; set; }
+}
+
+public sealed class VendorResponse
+{
+    public int VendorId { get; set; }
+    public string VendorCode { get; set; } = string.Empty;
+    public string VendorName { get; set; } = string.Empty;
+    public string? ContactPerson { get; set; }
+    public string? PhoneNumber { get; set; }
+    public string? EmailAddress { get; set; }
+    public string? Address { get; set; }
+    public string? TaxRegistrationNumber { get; set; }
+    public string? Notes { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string? CreatedBy { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
+}
+
 public sealed class AssetWriteRequest
 {
     [Required]
@@ -53,6 +102,22 @@ public sealed class AssetWriteRequest
     /// <summary>Required when OwnershipType is ClientOwned; null for company-owned/rented assets.</summary>
     public int? ClientId { get; set; }
 
+    /// <summary>Supplier for a purchase or rental. Required for rented assets.</summary>
+    public int? VendorId { get; set; }
+
+    [StringLength(100)]
+    public string? ProcurementReference { get; set; }
+
+    public DateTime? RentalStartDate { get; set; }
+
+    public DateTime? RentalEndDate { get; set; }
+
+    [Range(typeof(decimal), "0", "9999999999999999.99")]
+    public decimal? RentalCost { get; set; }
+
+    [StringLength(100)]
+    public string? RentalCostFrequency { get; set; }
+
     public DateTime? PurchaseDate { get; set; }
 
     [Range(typeof(decimal), "0", "9999999999999999.99")]
@@ -82,6 +147,15 @@ public sealed class AssetResponse
     public int AssetId { get; set; }
     public int? ClientId { get; set; }
     public string? ClientName { get; set; }
+    public int? VendorId { get; set; }
+    public string? VendorCode { get; set; }
+    public string? VendorName { get; set; }
+    public string? ProcurementReference { get; set; }
+    public DateTime? RentalStartDate { get; set; }
+    public DateTime? RentalEndDate { get; set; }
+    public decimal? RentalCost { get; set; }
+    public string? RentalCostFrequency { get; set; }
+    public DateTime? PurchaseDate { get; set; }
     public string AssetCode { get; set; } = string.Empty;
     public string AssetName { get; set; } = string.Empty;
     public string? Description { get; set; }
