@@ -174,7 +174,6 @@ public sealed class AssetsController : ControllerBase
             OwnershipType = request.OwnershipType,
             Status = AssetStatus.Available,
             PurchaseDate = request.PurchaseDate,
-            PurchaseCost = request.PurchaseCost,
             WarrantyExpiryDate = request.WarrantyExpiryDate,
             Location = NormalizeOptionalText(request.Location),
             Remarks = NormalizeOptionalText(request.Remarks),
@@ -284,7 +283,6 @@ public sealed class AssetsController : ControllerBase
         asset.SerialNumber = NormalizeOptionalText(request.SerialNumber);
         asset.OwnershipType = request.OwnershipType;
         asset.PurchaseDate = request.PurchaseDate;
-        asset.PurchaseCost = request.PurchaseCost;
         asset.WarrantyExpiryDate = request.WarrantyExpiryDate;
         asset.Location = NormalizeOptionalText(request.Location);
         asset.Remarks = NormalizeOptionalText(request.Remarks);
@@ -377,7 +375,6 @@ public sealed class AssetsController : ControllerBase
         OwnershipType = asset.OwnershipType,
         Status = asset.Status,
         PurchaseDate = asset.PurchaseDate,
-        PurchaseCost = asset.PurchaseCost,
         WarrantyExpiryDate = asset.WarrantyExpiryDate,
         Location = asset.Location,
         Remarks = asset.Remarks,
