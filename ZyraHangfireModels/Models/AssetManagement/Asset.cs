@@ -29,6 +29,26 @@ public class Asset
     /// <summary>Required for client-owned devices; null for company-owned or rented devices.</summary>
     public int? ClientId { get; set; }
 
+    /// <summary>Vendor that sold or currently rents this asset to the company.</summary>
+    public int? VendorId { get; set; }
+
+    /// <summary>Purchase order, invoice, rental agreement or supplier reference.</summary>
+    [MaxLength(100)]
+    public string? ProcurementReference { get; set; }
+
+    /// <summary>Rental commencement date, when applicable.</summary>
+    public DateTime? RentalStartDate { get; set; }
+
+    /// <summary>Expected rental return/contract end date, when applicable.</summary>
+    public DateTime? RentalEndDate { get; set; }
+
+    /// <summary>Recurring rental charge, if the vendor contract has one.</summary>
+    [Column(TypeName = "decimal(18, 2)")]
+    public decimal? RentalCost { get; set; }
+
+    [MaxLength(100)]
+    public string? RentalCostFrequency { get; set; }
+
     [MaxLength(100)]
     public string? Manufacturer { get; set; }
 
@@ -81,6 +101,8 @@ public class Asset
     public AssetCategory? Category { get; set; }
 
     public ClientMaster? Client { get; set; }
+
+    public VendorMaster? Vendor { get; set; }
 
     public ICollection<AssetAssignment> Assignments { get; set; } = new List<AssetAssignment>();
 
