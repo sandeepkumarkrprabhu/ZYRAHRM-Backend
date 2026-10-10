@@ -66,6 +66,47 @@ Rules:
 3. Asset responses expose `clientId` and `clientName`.
 4. Never store device passwords in the database; keep only the secret-vault reference.
 
+
+## API — Vendor master
+All routes require authentication.
+
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/api/vendors?includeInactive=false` | List active vendors by default |
+| GET | `/api/vendors/{id}` | Get vendor details |
+| POST | `/api/vendors` | Register a supplier |
+| PUT | `/api/vendors/{id}` | Update supplier/contact details |
+| DELETE | `/api/vendors/{id}` | Soft-deactivate a vendor |
+
+Example vendor body:
+```json
+{
+  "vendorCode": "VEND-001",
+  "vendorName": "Example IT Suppliers",
+  "contactPerson": "Supplier Account Manager",
+  "phoneNumber": "+91-0000000000",
+  "emailAddress": "accounts@example.com",
+  "address": "Supplier billing address",
+  "taxRegistrationNumber": "Optional tax registration",
+  "notes": "Laptop sales and rentals"
+}
+```
+
+Vendor codes must be unique. Deactivating a vendor is blocked while it has active rented assets; vendor history for purchased assets is retained.
+
+## Asset procurement and rental details
+Assets can optionally reference a vendor using `VendorId`. The asset API also records:
+- `ProcurementReference`: purchase order, invoice, or rental agreement reference.
+- `RentalStartDate` and `RentalEndDate`: rental period.
+- `RentalCost` and `RentalCostFrequency`: agreed rental amount and frequency (for example, monthly).
+
+Rules:
+1. `VendorId` must reference an active vendor when provided.
+2. `VendorId` is required for assets whose `OwnershipType` is `Rented`.
+3. Rental dates and rental charges are only accepted for rented assets; end date cannot precede start date.
+4. Vendor and client are different relationships. A vendor can supply/rent an asset used by an employee working on a client's project.
+5. Vendor information is tracked at asset level for now. If you later need multiple invoices, rental renewals, partial returns, or contract-level payment history, add dedicated procurement/rental-contract tables instead of overwriting the asset's current details.
+
 ## Migration and validation
 EF Core model/configuration changes require a migration before deployment. From the solution directory, generate and review the migration:
 
