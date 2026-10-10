@@ -94,8 +94,8 @@ Example vendor body:
 
 Vendor codes must be unique. Deactivating a vendor is blocked while it has active rented assets; vendor history for purchased assets is retained.
 
-## Asset procurement and rental details
-Assets can optionally reference a vendor using `VendorId`. The asset API also records:
+## Asset procurement and rental tracking
+Assets can optionally reference a vendor using `VendorId`. The asset API tracks operational details only:
 - `ProcurementReference`: purchase order, invoice, or rental agreement reference.
 - `RentalStartDate` and `RentalEndDate`: rental period.
 
@@ -104,7 +104,7 @@ Rules:
 2. `VendorId` is required for assets whose `OwnershipType` is `Rented`.
 3. Rental dates are only accepted for rented assets; end date cannot precede start date.
 4. Vendor and client are different relationships. A vendor can supply/rent an asset used by an employee working on a client's project.
-5. Vendor information is tracked at asset level for now. Rental charges, payment schedules and accounting are outside the current scope.
+5. Vendor information is tracked at asset level for now. Purchase cost, rental charges, payment schedules, depreciation, vendor payments and accounting are outside the current scope.
 
 ## Migration and validation
 EF Core model/configuration changes require a migration before deployment. From the solution directory, generate and review the migration:
