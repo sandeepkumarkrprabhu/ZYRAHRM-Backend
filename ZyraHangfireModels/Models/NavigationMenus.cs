@@ -10,6 +10,9 @@ namespace ZyraHangfireModels.Models
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int MenuId { get; set; }
 
+        // Nullable during rollout so existing database rows can be backfilled safely.
+        public int? ModuleId { get; set; }
+
         [Required]
         [MaxLength(10)]
         public string MenuKey { get; set; }
