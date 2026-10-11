@@ -737,6 +737,82 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                     b.ToTable("Holidiays");
                 });
 
+            modelBuilder.Entity("ZyraHangfireModels.Models.Modules", b =>
+                {
+                    b.Property<int>("ModuleId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ModuleId"));
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ModuleCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ModuleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("ModuleId");
+
+                    b.HasIndex("ModuleCode")
+                        .IsUnique();
+
+                    b.ToTable("Modules", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            ModuleId = 1,
+                            Description = "Employee and HR administration",
+                            IsActive = true,
+                            ModuleCode = "HRM",
+                            ModuleName = "Human Resource Management"
+                        },
+                        new
+                        {
+                            ModuleId = 2,
+                            Description = "Attendance policies and reporting",
+                            IsActive = true,
+                            ModuleCode = "ATTENDANCE",
+                            ModuleName = "Attendance Management"
+                        },
+                        new
+                        {
+                            ModuleId = 3,
+                            Description = "Biometric synchronization and integrations",
+                            IsActive = true,
+                            ModuleCode = "INTEGRATION",
+                            ModuleName = "Integration Management"
+                        },
+                        new
+                        {
+                            ModuleId = 4,
+                            Description = "Audit and global system configuration",
+                            IsActive = true,
+                            ModuleCode = "ADMIN",
+                            ModuleName = "System Administration"
+                        },
+                        new
+                        {
+                            ModuleId = 5,
+                            Description = "Asset categories, assets, clients, vendors, and assignments",
+                            IsActive = true,
+                            ModuleCode = "ASSET",
+                            ModuleName = "Asset Management"
+                        });
+                });
+
             modelBuilder.Entity("ZyraHangfireModels.Models.NavigationMenus", b =>
                 {
                     b.Property<int>("MenuId")
@@ -768,12 +844,17 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
+                    b.Property<int?>("ModuleId")
+                        .HasColumnType("int");
+
                     b.Property<string>("RequiredPermissionCode")
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
                     b.HasKey("MenuId");
+
+                    b.HasIndex("ModuleId");
 
                     b.ToTable("NavigationMenus");
 
@@ -786,6 +867,7 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                             IconName = "LayoutDashboard",
                             MenuKey = "dashboard",
                             MenuLabel = "Dashboard",
+                            ModuleId = 1,
                             RequiredPermissionCode = "EMP_VIEW"
                         },
                         new
@@ -796,6 +878,7 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                             IconName = "Users",
                             MenuKey = "employees",
                             MenuLabel = "Employees",
+                            ModuleId = 1,
                             RequiredPermissionCode = "EMP_VIEW"
                         },
                         new
@@ -806,6 +889,7 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                             IconName = "ShieldCheck",
                             MenuKey = "hr-users",
                             MenuLabel = "User Access & HR",
+                            ModuleId = 4,
                             RequiredPermissionCode = "USER_MANAGE"
                         },
                         new
@@ -816,6 +900,7 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                             IconName = "FileText",
                             MenuKey = "audit-logs",
                             MenuLabel = "Audit Logs",
+                            ModuleId = 4,
                             RequiredPermissionCode = "AUDIT_VIEW"
                         },
                         new
@@ -826,6 +911,7 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                             IconName = "RefreshCw",
                             MenuKey = "zyra-api",
                             MenuLabel = "Hangfire & ZYRA API",
+                            ModuleId = 3,
                             RequiredPermissionCode = "SYNC_TRIGGER"
                         },
                         new
@@ -836,7 +922,52 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                             IconName = "Settings",
                             MenuKey = "settings",
                             MenuLabel = "Settings",
+                            ModuleId = 4,
                             RequiredPermissionCode = "SYSTEM_SETTINGS"
+                        },
+                        new
+                        {
+                            MenuId = 9,
+                            Description = "Manage categories used to classify company and client assets",
+                            DisplayOrder = 1,
+                            IconName = "Tags",
+                            MenuKey = "asset-cat",
+                            MenuLabel = "Asset Categories",
+                            ModuleId = 5,
+                            RequiredPermissionCode = "ASSET_CATEGORY_VIEW"
+                        },
+                        new
+                        {
+                            MenuId = 10,
+                            Description = "Register and manage owned, rented, and client-owned assets",
+                            DisplayOrder = 2,
+                            IconName = "Laptop",
+                            MenuKey = "assets",
+                            MenuLabel = "Asset Master",
+                            ModuleId = 5,
+                            RequiredPermissionCode = "ASSET_VIEW"
+                        },
+                        new
+                        {
+                            MenuId = 11,
+                            Description = "Manage client records used for client-owned assets",
+                            DisplayOrder = 3,
+                            IconName = "Building2",
+                            MenuKey = "clients",
+                            MenuLabel = "Client Master",
+                            ModuleId = 5,
+                            RequiredPermissionCode = "CLIENT_VIEW"
+                        },
+                        new
+                        {
+                            MenuId = 12,
+                            Description = "Manage vendors supplying rented assets and services",
+                            DisplayOrder = 4,
+                            IconName = "Truck",
+                            MenuKey = "vendors",
+                            MenuLabel = "Vendor Master",
+                            ModuleId = 5,
+                            RequiredPermissionCode = "VENDOR_VIEW"
                         },
                         new
                         {
@@ -846,6 +977,7 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                             IconName = "Settings",
                             MenuKey = "attpolicy",
                             MenuLabel = "Attendance Policies",
+                            ModuleId = 2,
                             RequiredPermissionCode = "SYSTEM_SETTINGS"
                         });
                 });
@@ -938,6 +1070,70 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                             Description = "Configure global system parameters",
                             PermissionCode = "SYSTEM_SETTINGS",
                             PermissionName = "System Configuration"
+                        },
+                        new
+                        {
+                            Id = 8L,
+                            Category = "Asset Management",
+                            Description = "View asset category records",
+                            PermissionCode = "ASSET_CATEGORY_VIEW",
+                            PermissionName = "View Asset Categories"
+                        },
+                        new
+                        {
+                            Id = 9L,
+                            Category = "Asset Management",
+                            Description = "Create and update asset categories",
+                            PermissionCode = "ASSET_CATEGORY_MANAGE",
+                            PermissionName = "Manage Asset Categories"
+                        },
+                        new
+                        {
+                            Id = 10L,
+                            Category = "Asset Management",
+                            Description = "View asset master records",
+                            PermissionCode = "ASSET_VIEW",
+                            PermissionName = "View Assets"
+                        },
+                        new
+                        {
+                            Id = 11L,
+                            Category = "Asset Management",
+                            Description = "Create and update asset master records",
+                            PermissionCode = "ASSET_MANAGE",
+                            PermissionName = "Manage Assets"
+                        },
+                        new
+                        {
+                            Id = 12L,
+                            Category = "Asset Management",
+                            Description = "View client master records",
+                            PermissionCode = "CLIENT_VIEW",
+                            PermissionName = "View Clients"
+                        },
+                        new
+                        {
+                            Id = 13L,
+                            Category = "Asset Management",
+                            Description = "Create and update client master records",
+                            PermissionCode = "CLIENT_MANAGE",
+                            PermissionName = "Manage Clients"
+                        },
+                        new
+                        {
+                            Id = 14L,
+                            Category = "Asset Management",
+                            Description = "View vendor master records",
+                            PermissionCode = "VENDOR_VIEW",
+                            PermissionName = "View Vendors"
+                        },
+                        new
+                        {
+                            Id = 15L,
+                            Category = "Asset Management",
+                            Description = "Create and update vendor master records",
+                            PermissionCode = "VENDOR_MANAGE",
+                            PermissionName = "Manage Vendors"
                         });
                 });
 
@@ -1037,6 +1233,222 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                             Id = 13,
                             PermissionId = 5,
                             RoleId = 4
+                        },
+                        new
+                        {
+                            Id = 14,
+                            PermissionId = 8,
+                            RoleId = 1
+                        },
+                        new
+                        {
+                            Id = 15,
+                            PermissionId = 9,
+                            RoleId = 1
+                        },
+                        new
+                        {
+                            Id = 16,
+                            PermissionId = 10,
+                            RoleId = 1
+                        },
+                        new
+                        {
+                            Id = 17,
+                            PermissionId = 11,
+                            RoleId = 1
+                        },
+                        new
+                        {
+                            Id = 18,
+                            PermissionId = 12,
+                            RoleId = 1
+                        },
+                        new
+                        {
+                            Id = 19,
+                            PermissionId = 13,
+                            RoleId = 1
+                        },
+                        new
+                        {
+                            Id = 20,
+                            PermissionId = 14,
+                            RoleId = 1
+                        },
+                        new
+                        {
+                            Id = 21,
+                            PermissionId = 15,
+                            RoleId = 1
+                        },
+                        new
+                        {
+                            Id = 22,
+                            PermissionId = 8,
+                            RoleId = 2
+                        },
+                        new
+                        {
+                            Id = 23,
+                            PermissionId = 9,
+                            RoleId = 2
+                        },
+                        new
+                        {
+                            Id = 24,
+                            PermissionId = 10,
+                            RoleId = 2
+                        },
+                        new
+                        {
+                            Id = 25,
+                            PermissionId = 11,
+                            RoleId = 2
+                        },
+                        new
+                        {
+                            Id = 26,
+                            PermissionId = 12,
+                            RoleId = 2
+                        },
+                        new
+                        {
+                            Id = 27,
+                            PermissionId = 13,
+                            RoleId = 2
+                        },
+                        new
+                        {
+                            Id = 28,
+                            PermissionId = 14,
+                            RoleId = 2
+                        },
+                        new
+                        {
+                            Id = 29,
+                            PermissionId = 15,
+                            RoleId = 2
+                        },
+                        new
+                        {
+                            Id = 30,
+                            PermissionId = 8,
+                            RoleId = 5
+                        },
+                        new
+                        {
+                            Id = 31,
+                            PermissionId = 9,
+                            RoleId = 5
+                        },
+                        new
+                        {
+                            Id = 32,
+                            PermissionId = 10,
+                            RoleId = 5
+                        },
+                        new
+                        {
+                            Id = 33,
+                            PermissionId = 11,
+                            RoleId = 5
+                        },
+                        new
+                        {
+                            Id = 34,
+                            PermissionId = 12,
+                            RoleId = 5
+                        },
+                        new
+                        {
+                            Id = 35,
+                            PermissionId = 13,
+                            RoleId = 5
+                        },
+                        new
+                        {
+                            Id = 36,
+                            PermissionId = 14,
+                            RoleId = 5
+                        },
+                        new
+                        {
+                            Id = 37,
+                            PermissionId = 15,
+                            RoleId = 5
+                        },
+                        new
+                        {
+                            Id = 38,
+                            PermissionId = 8,
+                            RoleId = 6
+                        },
+                        new
+                        {
+                            Id = 39,
+                            PermissionId = 9,
+                            RoleId = 6
+                        },
+                        new
+                        {
+                            Id = 40,
+                            PermissionId = 10,
+                            RoleId = 6
+                        },
+                        new
+                        {
+                            Id = 41,
+                            PermissionId = 11,
+                            RoleId = 6
+                        },
+                        new
+                        {
+                            Id = 42,
+                            PermissionId = 12,
+                            RoleId = 6
+                        },
+                        new
+                        {
+                            Id = 43,
+                            PermissionId = 13,
+                            RoleId = 6
+                        },
+                        new
+                        {
+                            Id = 44,
+                            PermissionId = 14,
+                            RoleId = 6
+                        },
+                        new
+                        {
+                            Id = 45,
+                            PermissionId = 15,
+                            RoleId = 6
+                        },
+                        new
+                        {
+                            Id = 46,
+                            PermissionId = 8,
+                            RoleId = 4
+                        },
+                        new
+                        {
+                            Id = 47,
+                            PermissionId = 10,
+                            RoleId = 4
+                        },
+                        new
+                        {
+                            Id = 48,
+                            PermissionId = 12,
+                            RoleId = 4
+                        },
+                        new
+                        {
+                            Id = 49,
+                            PermissionId = 14,
+                            RoleId = 4
                         });
                 });
 
@@ -1106,6 +1518,24 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                             Description = "Read-only audit trail and SQL Server schema compliance inspector",
                             IsActive = false,
                             RoleName = "Auditor",
+                            UpdatedDateTime = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
+                        },
+                        new
+                        {
+                            Id = 5L,
+                            CreatedDateTime = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            Description = "Manage IT assets, asset categories, clients, vendors, and asset lifecycle",
+                            IsActive = false,
+                            RoleName = "IT Admin",
+                            UpdatedDateTime = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
+                        },
+                        new
+                        {
+                            Id = 6L,
+                            CreatedDateTime = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            Description = "Maintain asset records, categories, client records, and vendor records",
+                            IsActive = false,
+                            RoleName = "Asset Manager",
                             UpdatedDateTime = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         });
                 });
@@ -1292,6 +1722,14 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                     b.HasOne("ZyraHangfireModels.Models.AttendancePolicyMaster", null)
                         .WithMany("EmployeeMappings")
                         .HasForeignKey("AttendancePolicyMasterId");
+                });
+
+            modelBuilder.Entity("ZyraHangfireModels.Models.NavigationMenus", b =>
+                {
+                    b.HasOne("ZyraHangfireModels.Models.Modules", null)
+                        .WithMany()
+                        .HasForeignKey("ModuleId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("ZyraHangfireModels.Models.AssetManagement.Asset", b =>
