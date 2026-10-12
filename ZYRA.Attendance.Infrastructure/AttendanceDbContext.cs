@@ -36,7 +36,6 @@ namespace ZYRA.Attendance.Infrastructure
 
         public DbSet<Settings> HRMSettings { get; set; }
 
-
         // Asset Management module
         public DbSet<ClientMaster> ClientMasters { get; set; }
         public DbSet<ClientEmployeeAssignment> ClientEmployeeAssignments { get; set; }
@@ -46,7 +45,6 @@ namespace ZYRA.Attendance.Infrastructure
         public DbSet<AssetAssignment> AssetAssignments { get; set; }
         public DbSet<AssetStatusHistory> AssetStatusHistory { get; set; }
 
-
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -54,7 +52,7 @@ namespace ZYRA.Attendance.Infrastructure
             // Keep module-specific EF Core mappings in the infrastructure project.
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(AttendanceDbContext).Assembly);
             
-            modelBuilder.Entity<Modules>().HasData(
+            .HasData(
                 new Modules { ModuleId = 1, ModuleCode = "HRM", ModuleName = "Human Resource Management", Description = "Employee and HR administration", IsActive = true },
                 new Modules { ModuleId = 2, ModuleCode = "ATTENDANCE", ModuleName = "Attendance Management", Description = "Attendance policies and reporting", IsActive = true },
                 new Modules { ModuleId = 4, ModuleCode = "ADMIN", ModuleName = "System Administration", Description = "Audit and global system configuration", IsActive = true },
@@ -62,8 +60,7 @@ namespace ZYRA.Attendance.Infrastructure
             );
 
             // Seed initial data for NavigationMenus, Roles, Permissions, and RolePermissions
-            modelBuilder.Entity<NavigationMenus>().HasData(
-                    new NavigationMenus
+            modelBuilder.Entity<Navigationnew NavigationMenus
                     {
                         MenuId = 1,
                         MenuKey = "dashboard",
@@ -199,8 +196,7 @@ namespace ZYRA.Attendance.Infrastructure
 
             modelBuilder.Entity<Roles>().HasData(
                 new Roles
-                {
-                    Id = 1,
+          Id = 1,
                     RoleName = "Super Admin",
                     Description = "Full unrestricted system administration, user provisioning, and DB schema access"
                 },
@@ -239,8 +235,7 @@ namespace ZYRA.Attendance.Infrastructure
             modelBuilder.Entity<Permissions>().HasData(
                 new Permissions
                 {
-                    Id = 1,
-                    PermissionCode = "EMP_VIEW",
+              PermissionCode = "EMP_VIEW",
                     PermissionName = "View Employees",
                     Category = "Employees",
                     Description = "View employee biometric mapping data"
@@ -305,7 +300,7 @@ namespace ZYRA.Attendance.Infrastructure
 
             modelBuilder.Entity<RolePermissions>().HasData(
                 new RolePermissions { Id = 1, RoleId = 1, PermissionId = 1 },
-                new RolePermissions { Id = 2, RoleId = 1, PermissionId = 2 },
+     2, RoleId = 1, PermissionId = 2 },
                 new RolePermissions { Id = 3, RoleId = 1, PermissionId = 3 },
                 new RolePermissions { Id = 4, RoleId = 1, PermissionId = 4 },
                 new RolePermissions { Id = 5, RoleId = 1, PermissionId = 5 },
