@@ -57,7 +57,6 @@ namespace ZYRA.Attendance.Infrastructure
             modelBuilder.Entity<Modules>().HasData(
                 new Modules { ModuleId = 1, ModuleCode = "HRM", ModuleName = "Human Resource Management", Description = "Employee and HR administration", IsActive = true },
                 new Modules { ModuleId = 2, ModuleCode = "ATTENDANCE", ModuleName = "Attendance Management", Description = "Attendance policies and reporting", IsActive = true },
-                new Modules { ModuleId = 3, ModuleCode = "INTEGRATION", ModuleName = "Integration Management", Description = "Biometric synchronization and integrations", IsActive = true },
                 new Modules { ModuleId = 4, ModuleCode = "ADMIN", ModuleName = "System Administration", Description = "Audit and global system configuration", IsActive = true },
                 new Modules { ModuleId = 5, ModuleCode = "ASSET", ModuleName = "Asset Management", Description = "Asset categories, assets, clients, vendors, and assignments", IsActive = true }
             );
@@ -112,12 +111,12 @@ namespace ZYRA.Attendance.Infrastructure
                     {
                         MenuId = 5,
                         MenuKey = "zyra-api",
-                        ModuleId = 3,
+                        ModuleId = 2,
                         MenuLabel = "Hangfire & ZYRA API",
                         IconName = "RefreshCw",
                         DisplayOrder = 5,
                         RequiredPermissionCode = "SYNC_TRIGGER",
-                        Description = "Single API contract and Hangfire queue monitor"
+                        Description = "Attendance synchronization API and Hangfire queue monitor"
                     },
                     new NavigationMenus
                     {
@@ -272,8 +271,8 @@ namespace ZYRA.Attendance.Infrastructure
                     Id = 6,
                     PermissionCode = "SYNC_TRIGGER",
                     PermissionName = "Trigger Hangfire Sync",
-                    Category = "Integration",
-                    Description = "Execute ProcessAttendanceSyncJob background job"
+                    Category = "Attendance",
+                    Description = "Execute the attendance synchronization background job"
                 },
                 new Permissions
                 {
