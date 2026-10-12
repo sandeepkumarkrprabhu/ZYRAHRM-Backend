@@ -789,14 +789,6 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                         },
                         new
                         {
-                            ModuleId = 3,
-                            Description = "Biometric synchronization and integrations",
-                            IsActive = true,
-                            ModuleCode = "INTEGRATION",
-                            ModuleName = "Integration Management"
-                        },
-                        new
-                        {
                             ModuleId = 4,
                             Description = "Audit and global system configuration",
                             IsActive = true,
@@ -906,12 +898,12 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                         new
                         {
                             MenuId = 5,
-                            Description = "Single API contract and Hangfire queue monitor",
+                            Description = "Attendance synchronization API and Hangfire queue monitor",
                             DisplayOrder = 5,
                             IconName = "RefreshCw",
                             MenuKey = "zyra-api",
                             MenuLabel = "Hangfire & ZYRA API",
-                            ModuleId = 3,
+                            ModuleId = 2,
                             RequiredPermissionCode = "SYNC_TRIGGER"
                         },
                         new
@@ -1058,8 +1050,8 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                         new
                         {
                             Id = 6L,
-                            Category = "Integration",
-                            Description = "Execute ProcessAttendanceSyncJob background job",
+                            Category = "Attendance",
+                            Description = "Execute the attendance synchronization background job",
                             PermissionCode = "SYNC_TRIGGER",
                             PermissionName = "Trigger Hangfire Sync"
                         },
