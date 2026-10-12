@@ -51,17 +51,6 @@ namespace ZYRA.Attendance.Infrastructure
 
             // Keep module-specific EF Core mappings in the infrastructure project.
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(AttendanceDbContext).Assembly);
-            
-            
-
-            // Seed initial data for NavigationMenus, Roles, Permissions, and RolePermissions
-            
-
-            
-
-            
-
-            
         }
     }
 }
