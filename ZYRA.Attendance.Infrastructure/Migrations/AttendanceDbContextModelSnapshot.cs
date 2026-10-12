@@ -919,9 +919,20 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                         },
                         new
                         {
+                            MenuId = 13,
+                            Description = "Overview of asset inventory, assignments, categories, clients, and vendors",
+                            DisplayOrder = 1,
+                            IconName = "LayoutDashboard",
+                            MenuKey = "asset-dash",
+                            MenuLabel = "Dashboard",
+                            ModuleId = 5,
+                            RequiredPermissionCode = "ASSET_VIEW"
+                        },
+                        new
+                        {
                             MenuId = 9,
                             Description = "Manage categories used to classify company and client assets",
-                            DisplayOrder = 1,
+                            DisplayOrder = 2,
                             IconName = "Tags",
                             MenuKey = "asset-cat",
                             MenuLabel = "Asset Categories",
@@ -932,7 +943,7 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                         {
                             MenuId = 10,
                             Description = "Register and manage owned, rented, and client-owned assets",
-                            DisplayOrder = 2,
+                            DisplayOrder = 3,
                             IconName = "Laptop",
                             MenuKey = "assets",
                             MenuLabel = "Asset Master",
@@ -943,7 +954,7 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                         {
                             MenuId = 11,
                             Description = "Manage client records used for client-owned assets",
-                            DisplayOrder = 3,
+                            DisplayOrder = 4,
                             IconName = "Building2",
                             MenuKey = "clients",
                             MenuLabel = "Client Master",
@@ -954,7 +965,7 @@ namespace ZYRA.Attendance.Infrastructure.Migrations
                         {
                             MenuId = 12,
                             Description = "Manage vendors supplying rented assets and services",
-                            DisplayOrder = 4,
+                            DisplayOrder = 5,
                             IconName = "Truck",
                             MenuKey = "vendors",
                             MenuLabel = "Vendor Master",

@@ -131,12 +131,23 @@ namespace ZYRA.Attendance.Infrastructure
                     },
                     new NavigationMenus
                     {
+                        MenuId = 13,
+                        MenuKey = "asset-dash",
+                        ModuleId = 5,
+                        MenuLabel = "Dashboard",
+                        IconName = "LayoutDashboard",
+                        DisplayOrder = 1,
+                        RequiredPermissionCode = "ASSET_VIEW",
+                        Description = "Overview of asset inventory, assignments, categories, clients, and vendors"
+                    },
+                    new NavigationMenus
+                    {
                         MenuId = 9,
                         MenuKey = "asset-cat",
                         ModuleId = 5,
                         MenuLabel = "Asset Categories",
                         IconName = "Tags",
-                        DisplayOrder = 1,
+                        DisplayOrder = 2,
                         RequiredPermissionCode = "ASSET_CATEGORY_VIEW",
                         Description = "Manage categories used to classify company and client assets"
                     },
@@ -147,7 +158,7 @@ namespace ZYRA.Attendance.Infrastructure
                         ModuleId = 5,
                         MenuLabel = "Asset Master",
                         IconName = "Laptop",
-                        DisplayOrder = 2,
+                        DisplayOrder = 3,
                         RequiredPermissionCode = "ASSET_VIEW",
                         Description = "Register and manage owned, rented, and client-owned assets"
                     },
@@ -158,7 +169,7 @@ namespace ZYRA.Attendance.Infrastructure
                         ModuleId = 5,
                         MenuLabel = "Client Master",
                         IconName = "Building2",
-                        DisplayOrder = 3,
+                        DisplayOrder = 4,
                         RequiredPermissionCode = "CLIENT_VIEW",
                         Description = "Manage client records used for client-owned assets"
                     },
@@ -169,7 +180,7 @@ namespace ZYRA.Attendance.Infrastructure
                         ModuleId = 5,
                         MenuLabel = "Vendor Master",
                         IconName = "Truck",
-                        DisplayOrder = 4,
+                        DisplayOrder = 5,
                         RequiredPermissionCode = "VENDOR_VIEW",
                         Description = "Manage vendors supplying rented assets and services"
                     },
