@@ -7,8 +7,7 @@ This avoids introducing duplicate module-permission, role-menu, or user-role tab
 
 ## Seed module catalog
 - `HRM` — Human Resource Management
-- `ATTENDANCE` — Attendance Management
-- `INTEGRATION` — Biometric and integration operations
+- `ATTENDANCE` — Attendance policies, biometric synchronization, attendance APIs, and background jobs
 - `ADMIN` — Administration, audit, and system configuration
 - `ASSET` — Asset Management
 
@@ -42,12 +41,16 @@ These are the initial seed grants. Review business policy before production; in 
 
 ## Existing menu mapping
 - Dashboard, Employees → HRM
-- Attendance Policies → Attendance
-- Hangfire & ZYRA API → Integration
+- Attendance Policies, Hangfire & ZYRA API → Attendance
 - User Access & HR, Audit Logs, Settings → Administration
 
+## Attendance and Integration consolidation
+Attendance is the single module for attendance policy management, biometric synchronization, attendance APIs, and the Hangfire jobs that process attendance. There is no separate Integration module because the integration work currently serves Attendance only. The existing `SYNC_TRIGGER` permission is retained to avoid breaking role grants and API contracts; its category and description now identify it as an Attendance permission.
+
+The `Hangfire & ZYRA API` navigation menu (MenuId 5) is mapped to `ATTENDANCE` (ModuleId 2). The obsolete `INTEGRATION` module seed (ModuleId 3) is removed. Existing deployments must apply a reviewed EF Core migration that updates the menu foreign key before deleting the old module row. Do not delete ModuleId 3 before moving any existing menus that still reference it.
+
 ## Migration note
-Module, navigation, permission, and role-permission records are seeded via EF Core `HasData`. Existing installations must apply a reviewed EF Core migration for these seed changes. Verify the generated migration uses insert/update operations safely for existing data and does not conflict with manually assigned IDs. `NavigationMenus.ModuleId` is nullable during rollout; backfill legacy rows before making it non-nullable.
+Module, navigation, permission, and role-permission records are seeded via EF Core `HasData`. Existing installations must apply a reviewed EF Core migration for these seed changes. Verify the generated migration uses insert/update/delete operations safely for existing data and does not conflict with manually assigned IDs. `NavigationMenus.ModuleId` is nullable during rollout; backfill legacy rows before making it non-nullable.
 
 ## API/navigation behavior
 The authorized navigation response includes `moduleId`, `moduleCode`, and `moduleName`. Menus are filtered using the existing permission and role-permission joins. Module assignment groups navigation; it does not replace endpoint-level permission checks.
