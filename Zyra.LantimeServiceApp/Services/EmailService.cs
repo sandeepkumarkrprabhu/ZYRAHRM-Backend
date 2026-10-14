@@ -98,7 +98,7 @@ namespace Zyra.LantimeServiceApp.Services
             string toEmail,
             string firstName,
             string plainPassword,
-            IConfiguration configuration = null)
+            IConfiguration? configuration = null)
         {
             if (string.IsNullOrWhiteSpace(toEmail))
                 throw new ArgumentException("Recipient email is required.", nameof(toEmail));
