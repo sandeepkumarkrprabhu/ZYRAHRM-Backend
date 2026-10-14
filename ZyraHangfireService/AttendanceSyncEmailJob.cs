@@ -39,6 +39,8 @@ namespace ZyraHangfireService
             }
             finally
             {
+                try
+                {
                 await _notifications.NotifyAsync(
                     "AttendanceSync",
                     "Attendance Sync",
@@ -46,6 +48,11 @@ namespace ZyraHangfireService
                     startedAt,
                     DateTime.Now,
                     details);
+                }
+                catch (Exception notificationException)
+                {
+                    _logger.LogError(notificationException, "Failed to send job notification; original job result is preserved.");
+                }
             }
         }
     }
