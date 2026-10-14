@@ -275,24 +275,31 @@ namespace Zyra.LantimeServiceApp.JobService
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
-            // A manual check-in is a valid open session too. A completed
-            // checkout after that check-in means the session is already closed.
-            var checkoutSearchFrom = latestCheckIn?.CheckTime ?? shiftStartTime;
+            // If there is no successful check-in attendance log, treat the
+            // session as a manual check-in. Since that manual check-in has no
+            // biometric timestamp in this log, use shift start only as the
+            // lower-bound reference for searching punches, never as checkout.
+            var isInferredManualCheckIn = latestCheckIn == null;
+            var checkInReferenceTime = latestCheckIn?.CheckTime ?? shiftStartTime;
 
             var latestCheckout = attendanceLogs
                 .Where(x =>
                     (x.AttendanceState == HRMConstants.CheckoutState ||
                      x.AttendanceState == HRMConstants.AutoCheckoutState ||
                      x.AttendanceState == HRMConstants.ForceCheckoutState) &&
-                    x.CheckTime > checkoutSearchFrom)
+                    x.CheckTime > checkInReferenceTime)
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
+            var checkInDescription = latestCheckIn?.CheckTime.ToString("yyyy-MM-dd HH:mm:ss")
+                ?? $"Manual (no successful check-in log; reference={checkInReferenceTime:yyyy-MM-dd HH:mm:ss})";
+
             _logger.LogInformation(
-                "AutoCheckout | Employee={EmployeeName} | BiometricUserId={BiometricUserId} | CheckIn={CheckIn} | ExistingCheckout={ExistingCheckout} | PolicyCheckoutTrigger={PolicyCheckoutTrigger} | ExecutionTime={ExecutionTime}",
+                "AutoCheckout | Employee={EmployeeName} | BiometricUserId={BiometricUserId} | CheckIn={CheckIn} | CheckInType={CheckInType} | ExistingCheckout={ExistingCheckout} | PolicyCheckoutTrigger={PolicyCheckoutTrigger} | ExecutionTime={ExecutionTime}",
                 employee.EmployeeName,
                 employee.BiometricUserId,
-                latestCheckIn?.CheckTime,
+                checkInDescription,
+                isInferredManualCheckIn ? "Manual/inferred" : "Attendance log",
                 latestCheckout?.CheckTime,
                 policyAutoCheckoutTime,
                 executionTime);
@@ -315,57 +322,43 @@ namespace Zyra.LantimeServiceApp.JobService
                     return;
                 }
 
-                var checkInText = latestCheckIn?.CheckTime.ToString("yyyy-MM-dd HH:mm:ss") ?? "UNKNOWN";
                 var checkoutText = latestCheckout.CheckTime.ToString("yyyy-MM-dd HH:mm:ss");
                 var message =
-                    $"{employee.EmployeeName} | CheckIn={checkInText} | " +
+                    $"{employee.EmployeeName} | CheckIn={checkInDescription} | " +
                     $"Checkout={checkoutText} | Status=Skipped | " +
                     "Reason=Already checked out; no later biometric punch found.";
 
                 _logger.LogInformation(
                     "AutoCheckout | Employee={EmployeeName} | CheckIn={CheckIn} | Checkout={Checkout} | Status=Skipped | Reason=Already checked out; no later biometric punch found.",
                     employee.EmployeeName,
-                    latestCheckIn?.CheckTime,
+                    checkInDescription,
                     latestCheckout.CheckTime);
 
                 context.WriteLine(ConsoleTextColor.Gray, message);
                 return;
             }
 
-            if (latestCheckIn == null)
-            {
-                const string reason = "No open attendance session found.";
-                _logger.LogInformation(
-                    "AutoCheckout | Employee={EmployeeName} | CheckIn=UNKNOWN | Checkout=NOT_CREATED | Status=Skipped | Reason={Reason}",
-                    employee.EmployeeName,
-                    reason);
-
-                context.WriteLine(
-                    ConsoleTextColor.Gray,
-                    $"{employee.EmployeeName} | CheckIn=UNKNOWN | Checkout=NOT_CREATED | Status=Skipped | Reason={reason}");
-
-                return;
-            }
-
-            // The latest punch is searched after the open check-in, so this
-            // works for both manual and biometric check-ins.
+            // For inferred manual check-ins, shift start is the search
+            // reference because no successful check-in log provides a timestamp.
+            // It is not sent to HRM as a check-in or checkout timestamp.
             var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
                 employee.BiometricUserId,
-                latestCheckIn.CheckTime,
+                checkInReferenceTime,
                 executionTime);
 
-            if (!latestPunch.HasValue || latestPunch.Value <= latestCheckIn.CheckTime)
+            if (!latestPunch.HasValue || latestPunch.Value <= checkInReferenceTime)
             {
-                const string reason = "No valid biometric punch exists after check-in; checkout was skipped.";
+                const string reason = "Skipped - No valid biometric punch exists after check-in/reference time.";
                 _logger.LogInformation(
-                    "AutoCheckout | Employee={EmployeeName} | CheckIn={CheckIn} | Checkout=NOT_CREATED | Status=Skipped | Reason={Reason}",
+                    "AutoCheckout | Employee={EmployeeName} | CheckIn={CheckIn} | CheckInType={CheckInType} | Checkout=NOT_CREATED | Status=Skipped | Reason={Reason}",
                     employee.EmployeeName,
-                    latestCheckIn.CheckTime,
+                    checkInDescription,
+                    isInferredManualCheckIn ? "Manual/inferred" : "Attendance log",
                     reason);
 
                 context.WriteLine(
                     ConsoleTextColor.Yellow,
-                    $"{employee.EmployeeName} | CheckIn={latestCheckIn.CheckTime:yyyy-MM-dd HH:mm:ss} | " +
+                    $"{employee.EmployeeName} | CheckIn={checkInDescription} | " +
                     $"Checkout=NOT_CREATED | Status=Skipped | Reason={reason}");
 
                 return;
@@ -398,15 +391,20 @@ namespace Zyra.LantimeServiceApp.JobService
             await _dbContext.SaveChangesAsync();
 
             var resultStatus = apiSuccess ? "Checkout Created" : "Checkout Failed";
+            var checkInSourceDescription = isInferredManualCheckIn
+                ? "Manual/inferred; shift-start reference"
+                : "Attendance log";
+
             var resultMessage =
-                $"{employee.EmployeeName} | CheckIn={latestCheckIn.CheckTime:yyyy-MM-dd HH:mm:ss} | " +
+                $"{employee.EmployeeName} | CheckIn={checkInDescription} | " +
                 $"Checkout={checkoutTime:yyyy-MM-dd HH:mm:ss} | " +
-                $"Source=Latest biometric punch | Status={resultStatus}";
+                $"Source=Latest biometric punch | CheckInType={checkInSourceDescription} | Status={resultStatus}";
 
             _logger.LogInformation(
-                "AutoCheckout | Employee={EmployeeName} | CheckIn={CheckIn} | Checkout={Checkout} | Source=Latest biometric punch | Status={Status}",
+                "AutoCheckout | Employee={EmployeeName} | CheckIn={CheckIn} | CheckInType={CheckInType} | Checkout={Checkout} | Source=Latest biometric punch | Status={Status}",
                 employee.EmployeeName,
-                latestCheckIn.CheckTime,
+                checkInDescription,
+                checkInSourceDescription,
                 checkoutTime,
                 resultStatus);
 
