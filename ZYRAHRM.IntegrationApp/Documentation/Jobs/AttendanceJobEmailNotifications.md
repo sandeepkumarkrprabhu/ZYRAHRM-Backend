@@ -35,7 +35,7 @@ Each job has its own `Subject`, `HtmlBody`, and `PlainTextBody`: `AttendanceSync
 
 Supported placeholders are `{JobName}`, `{Status}`, `{StartedAt}`, `{CompletedAt}`, `{Duration}`, `{Details}`, `{SupportEmail}`, and `{LoginUrl}`.
 
-Templates are configuration-based. After changing settings in appsettings, restart the service for the changes to take effect. Use the same keys in deployment environment variables or secret/configuration providers when appropriate.
+Templates are configuration-based and bound through `IOptionsMonitor`. The JSON configuration provider reloads file changes when reload-on-change is enabled, so template and switch updates can take effect without restarting. Environment variables and secret-provider changes may require a process restart depending on the provider. Use deployment-specific configuration and never commit real SMTP passwords.
 
 ## Behavior
 
