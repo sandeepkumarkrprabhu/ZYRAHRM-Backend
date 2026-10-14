@@ -46,11 +46,13 @@ namespace ZyraHangfireService
             }
             finally
             {
+                var completedAt = DateTime.Now;
+
                 try
                 {
-                    var completedAt = DateTime.Now;
                     var report = await BuildCheckoutSummaryAsync(startedAt, completedAt);
-                    details = string.IsNullOrWhiteSpace(report) ? details : report;
+                    if (!string.IsNullOrWhiteSpace(report))
+                        details = report;
 
                     if (status == "Success" &&
                         details.Contains("Failed checkouts:", StringComparison.Ordinal) &&
@@ -58,10 +60,19 @@ namespace ZyraHangfireService
                     {
                         status = "Partial";
                     }
+                }
+                catch (Exception reportException)
+                {
+                    _logger.LogError(reportException,
+                        "Failed to build Company Force Checkout employee summary.");
+                    details = "The job completed, but employee-level checkout details could not be retrieved. Review Hangfire logs.";
+                }
 
-                    if (!string.IsNullOrWhiteSpace(jobFailure))
-                        details = $"{jobFailure}{Environment.NewLine}{Environment.NewLine}{details}";
+                if (!string.IsNullOrWhiteSpace(jobFailure))
+                    details = $"{jobFailure}{Environment.NewLine}{Environment.NewLine}{details}";
 
+                try
+                {
                     await _notifications.NotifyAsync(
                         "CompanyForceCheckout",
                         "Company Force Checkout",
@@ -73,7 +84,7 @@ namespace ZyraHangfireService
                 catch (Exception notificationException)
                 {
                     _logger.LogError(notificationException,
-                        "Failed to build or send Company Force Checkout summary email; original job result is preserved.");
+                        "Failed to send Company Force Checkout summary email; original job result is preserved.");
                 }
             }
         }
@@ -114,7 +125,7 @@ namespace ZyraHangfireService
                 .ToListAsync();
 
             var employeeByBiometricId = employees
-                .GroupBy(x => x.BiometricUserId!)
+                .GroupBy(x => x.BiometricUserId)
                 .ToDictionary(x => x.Key, x => x.First());
 
             var successful = attempts
@@ -139,7 +150,7 @@ namespace ZyraHangfireService
 
             foreach (var log in successful)
             {
-                employeeByBiometricId.TryGetValue(log.EmployeeCode ?? string.Empty, out var employee);
+                employeeByBiometricId.TryGetValue(log.EmployeeCode, out var employee);
 
                 var previousCheckIn = logs
                     .Where(x => x.EmployeeCode == log.EmployeeCode &&
@@ -154,7 +165,7 @@ namespace ZyraHangfireService
 
                 lines.Add($"Employee Name: {employee?.EmployeeName ?? "Unknown"}");
                 lines.Add($"Employee Code: {employee?.HRMEmployeeCode ?? "Unknown"}");
-                lines.Add($"Biometric Device ID: {log.EmployeeCode ?? "Not available"}");
+                lines.Add($"Biometric Device ID: {log.EmployeeCode}");
                 lines.Add($"Check-in Timestamp: {(previousCheckIn == null ? "Not available" : previousCheckIn.CheckTime.ToString("yyyy-MM-dd HH:mm:ss"))}");
                 lines.Add($"Checkout Timestamp: {log.CheckTime:yyyy-MM-dd HH:mm:ss}");
                 lines.Add($"Reason: {string.IsNullOrWhiteSpace(log.ErrorMessage) ? "Final company force checkout for employee outside active shift." : log.ErrorMessage}");
@@ -168,10 +179,10 @@ namespace ZyraHangfireService
 
                 foreach (var log in failed)
                 {
-                    employeeByBiometricId.TryGetValue(log.EmployeeCode ?? string.Empty, out var employee);
+                    employeeByBiometricId.TryGetValue(log.EmployeeCode, out var employee);
                     lines.Add($"Employee Name: {employee?.EmployeeName ?? "Unknown"}");
                     lines.Add($"Employee Code: {employee?.HRMEmployeeCode ?? "Unknown"}");
-                    lines.Add($"Biometric Device ID: {log.EmployeeCode ?? "Not available"}");
+                    lines.Add($"Biometric Device ID: {log.EmployeeCode}");
                     lines.Add($"Attempt Timestamp: {log.CheckTime:yyyy-MM-dd HH:mm:ss}");
                     lines.Add($"Reason: {string.IsNullOrWhiteSpace(log.ErrorMessage) ? "Checkout API attempt failed." : log.ErrorMessage}");
                     lines.Add(new string('-', 36));
