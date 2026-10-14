@@ -8,14 +8,14 @@ namespace ZyraHangfireService
     public sealed class AttendanceJobEmailNotificationService : IAttendanceJobEmailNotificationService
     {
         private readonly IEmailService _emailService;
-        private readonly IOptions<AttendanceJobEmailOptions> _options;
-        private readonly IOptions<SmtpOptions> _smtpOptions;
+        private readonly IOptionsMonitor<AttendanceJobEmailOptions> _options;
+        private readonly IOptionsMonitor<SmtpOptions> _smtpOptions;
         private readonly ILogger<AttendanceJobEmailNotificationService> _logger;
 
         public AttendanceJobEmailNotificationService(
             IEmailService emailService,
-            IOptions<AttendanceJobEmailOptions> options,
-            IOptions<SmtpOptions> smtpOptions,
+            IOptionsMonitor<AttendanceJobEmailOptions> options,
+            IOptionsMonitor<SmtpOptions> smtpOptions,
             ILogger<AttendanceJobEmailNotificationService> logger)
         {
             _emailService = emailService;
@@ -33,7 +33,7 @@ namespace ZyraHangfireService
             string details,
             CancellationToken cancellationToken = default)
         {
-            var settings = _options.Value;
+            var settings = _options.CurrentValue;
             var enabled = jobKey switch
             {
                 "AttendanceSync" => settings.EnableAttendanceSync,
@@ -79,8 +79,8 @@ namespace ZyraHangfireService
                 ["CompletedAt"] = completedAt.ToString("yyyy-MM-dd HH:mm:ss"),
                 ["Duration"] = duration.ToString(@"hh\:mm\:ss"),
                 ["Details"] = details,
-                ["SupportEmail"] = _smtpOptions.Value.SupportEmail,
-                ["LoginUrl"] = _smtpOptions.Value.LoginUrl
+                ["SupportEmail"] = _smtpOptions.CurrentValue.SupportEmail,
+                ["LoginUrl"] = _smtpOptions.CurrentValue.LoginUrl
             };
 
             string Render(string source)
