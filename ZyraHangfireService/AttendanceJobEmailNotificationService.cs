@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using System.Net;
 using Microsoft.Extensions.Options;
 using Zyra.LantimeServiceApp.Interfaces;
 using Zyra.LantimeServiceApp.Models;
@@ -83,10 +84,14 @@ namespace ZyraHangfireService
                 ["LoginUrl"] = _smtpOptions.CurrentValue.LoginUrl
             };
 
-            string Render(string source)
+            string Render(string source, bool encodeHtmlValues = false)
             {
                 foreach (var token in tokens)
-                    source = source.Replace("{" + token.Key + "}", token.Value, StringComparison.OrdinalIgnoreCase);
+                {
+                    var value = encodeHtmlValues ? WebUtility.HtmlEncode(token.Value) : token.Value;
+                    source = source.Replace("{" + token.Key + "}", value, StringComparison.OrdinalIgnoreCase);
+                }
+
                 return source;
             }
 
@@ -99,7 +104,7 @@ namespace ZyraHangfireService
                         To = recipient,
                         Subject = Render(template.Subject),
                         PlainTextBody = Render(template.PlainTextBody),
-                        HtmlBody = Render(template.HtmlBody)
+                        HtmlBody = Render(template.HtmlBody, encodeHtmlValues: true)
                     }, cancellationToken);
                 }
                 catch (Exception ex)
