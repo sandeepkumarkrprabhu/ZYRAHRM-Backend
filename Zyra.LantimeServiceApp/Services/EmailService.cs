@@ -12,17 +12,17 @@ namespace Zyra.LantimeServiceApp.Services
 {
     public sealed class EmailService : IEmailService
     {
-        private readonly SmtpOptions _smtp;
+        private readonly IOptionsMonitor<SmtpOptions> _smtpOptions;
         private readonly IConfiguration _configuration;
         private readonly ILogger<EmailService> _logger;
         private readonly AsyncRetryPolicy _retryPolicy;
 
         public EmailService(
-            IOptions<SmtpOptions> smtpOptions,
+            IOptionsMonitor<SmtpOptions> smtpOptions,
             IConfiguration configuration,
             ILogger<EmailService> logger)
         {
-            _smtp = smtpOptions?.Value ?? throw new ArgumentNullException(nameof(smtpOptions));
+            _smtpOptions = smtpOptions ?? throw new ArgumentNullException(nameof(smtpOptions));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
@@ -48,15 +48,17 @@ namespace Zyra.LantimeServiceApp.Services
             if (string.IsNullOrWhiteSpace(message.To))
                 throw new ArgumentException("Email recipient is required.", nameof(message));
 
-            if (string.IsNullOrWhiteSpace(_smtp.Host))
+            var smtp = _smtpOptions.CurrentValue;
+
+            if (string.IsNullOrWhiteSpace(smtp.Host))
                 throw new InvalidOperationException("Smtp:Host is not configured.");
 
-            if (string.IsNullOrWhiteSpace(_smtp.FromEmail))
+            if (string.IsNullOrWhiteSpace(smtp.FromEmail))
                 throw new InvalidOperationException("Smtp:FromEmail is not configured.");
 
             using var mail = new MailMessage
             {
-                From = new MailAddress(_smtp.FromEmail, _smtp.FromName),
+                From = new MailAddress(smtp.FromEmail, smtp.FromName),
                 Subject = message.Subject ?? string.Empty,
                 Body = !string.IsNullOrWhiteSpace(message.HtmlBody)
                     ? message.HtmlBody
@@ -76,12 +78,12 @@ namespace Zyra.LantimeServiceApp.Services
                 }
             }
 
-            using var smtpClient = new SmtpClient(_smtp.Host, _smtp.Port)
+            using var smtpClient = new SmtpClient(smtp.Host, smtp.Port)
             {
-                EnableSsl = _smtp.UseSsl,
-                Credentials = string.IsNullOrWhiteSpace(_smtp.User)
+                EnableSsl = smtp.UseSsl,
+                Credentials = string.IsNullOrWhiteSpace(smtp.User)
                     ? null
-                    : new NetworkCredential(_smtp.User, _smtp.Password)
+                    : new NetworkCredential(smtp.User, smtp.Password)
             };
 
             await _retryPolicy.ExecuteAsync(async ct =>
@@ -104,9 +106,9 @@ namespace Zyra.LantimeServiceApp.Services
                 throw new ArgumentException("Recipient email is required.", nameof(toEmail));
 
             var config = configuration ?? _configuration;
-            var loginUrl = config["Smtp:LoginUrl"] ?? _smtp.LoginUrl;
-            var supportEmail = config["Smtp:SupportEmail"] ?? _smtp.SupportEmail;
-            var companyName = _smtp.FromName;
+            var loginUrl = config["Smtp:LoginUrl"] ?? _smtpOptions.CurrentValue.LoginUrl;
+            var supportEmail = config["Smtp:SupportEmail"] ?? _smtpOptions.CurrentValue.SupportEmail;
+            var companyName = _smtpOptions.CurrentValue.FromName;
             var safeFirstName = string.IsNullOrWhiteSpace(firstName) ? "User" : firstName.Trim();
             var safePassword = plainPassword ?? string.Empty;
 
