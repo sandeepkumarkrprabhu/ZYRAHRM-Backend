@@ -1,45 +1,45 @@
 # Auto Checkout Job
 
 ## Purpose
-JobAutoCheckoutJob closes open attendance sessions according to configured attendance-policy auto-checkout times. It first checks the biometric device for a later punch. If one exists, that punch is used as checkout; otherwise the policy auto-checkout time is used.
+`JobAutoCheckoutJob` reconciles an open attendance session when its configured Auto Checkout policy is due. The configured `AUTO_CHECKOUT_TIME` determines when the job runs; it is not used as a fallback employee checkout timestamp.
 
 ## Flow
-Load enabled auto-checkout policies -> find policies whose scheduled checkout is currently due -> get employees assigned to each policy -> evaluate each employee -> biometric checkout or policy checkout.
+Load enabled auto-checkout policies -> select policies whose scheduled time is due and within the one-hour eligibility window -> get employees assigned to each policy -> find the latest open check-in -> use the latest biometric punch after that check-in as checkout.
 
 ## Policy Eligibility
-Only enabled attendance policies containing the configured shift auto-checkout rule are considered. The scheduled policy checkout must not be in the future and must be within the one-hour eligibility window.
+Only enabled attendance policies containing the configured shift auto-checkout and shift-start rules are considered. The scheduled policy checkout must not be in the future and must be within the one-hour eligibility window.
 
-## Employee Eligibility
-1. Employee belongs to an eligible attendance policy.
-2. HRM employee code and biometric user ID exist.
-3. A successful check-in exists.
-4. No checkout after that check-in exists.
-5. Check-in is not at or after the policy checkout time.
+## Employee Processing
+1. Employee must have an HRM employee code and biometric user ID.
+2. Find the latest successful check-in, including manual check-ins, within the job's attendance-log lookback window.
+3. If a checkout already exists after that check-in and there is no later biometric punch, log the existing check-in/checkout and skip duplicate creation.
+4. If a biometric punch exists after the open check-in, send a checkout to the attendance API using the latest punch timestamp.
+5. If no biometric punch exists after the open check-in, skip checkout creation and log the reason. Do not use the policy Auto Checkout time as a fallback.
+6. If a checkout already exists and a later punch exists, preserve the existing extra-working-time reconciliation behavior.
 
 ## Biometric Punch Priority
-A valid biometric punch after check-in takes precedence over the policy fallback.
+The latest biometric punch after the open check-in is the checkout timestamp, regardless of whether the session began with a manual or biometric check-in.
 
 Example:
-Check-in 09:05, policy checkout 18:00, biometric punch 18:20 -> checkout at 18:20.
+- Check-in: 2026-10-13 10:29:47
+- Biometric punches: 14:48:33, 16:31:28, 17:51:16, 17:51:17
+- Checkout timestamp selected: 2026-10-13 17:51:17
 
-If no later biometric punch exists -> checkout at 18:00.
+If no later biometric punch exists, checkout is skipped. The Company Force Checkout job remains separate and retains its own rules.
 
 ## Overnight Attendance
 Attendance logs include the previous calendar day so an overnight open session can remain eligible.
 
-## Database
-Successful checkout processing creates an AttendanceLog with employee biometric ID, checkout time, attendance state, processing status, and message.
-
-## Failure Handling
-An individual API failure is logged and processing continues for other employees. Unexpected job-level exceptions are rethrown for Hangfire retry/failure handling.
+## Database and Failure Handling
+Successful checkout processing creates an `AttendanceLog` with the employee biometric ID, selected checkout time, `Auto checkout` state, processing status, and message. Failed API attempts are logged with failed status so a subsequent run can retry. An employee-level API failure is logged; unexpected job-level exceptions are rethrown for Hangfire retry/failure handling.
 
 ## Logging
-Application logger and Hangfire console are used for policy eligibility, employee selection, biometric checkout, policy checkout, skips, and failures.
+Application logs and Hangfire console output include the employee's check-in time, selected/existing checkout time, checkout source, status, and skip/failure reason where applicable.
 
 ## Business Rules
-1. Policy auto-checkout time is the eligibility boundary.
-2. Already-closed attendance is skipped.
-3. Checkout must never occur before check-in.
-4. A later biometric punch takes precedence over policy fallback.
-5. If no later punch exists, policy checkout time is used.
-6. Overnight attendance is considered.
+1. Configured Auto Checkout time determines job eligibility only.
+2. A manual or biometric check-in can start the session.
+3. The latest biometric punch after the open check-in is used as checkout.
+4. No later biometric punch means checkout is skipped; there is no Auto Checkout-time fallback.
+5. Existing checkout records are not duplicated.
+6. Company Force Checkout remains separate.
