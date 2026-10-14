@@ -30,6 +30,7 @@ namespace ZyraHangfireService
         {
             var startedAt = DateTime.Now;
             var status = "Success";
+            string? jobFailure = null;
             var details = "No employee force-checkout attempts were recorded during this run.";
 
             try
@@ -39,7 +40,7 @@ namespace ZyraHangfireService
             catch (Exception ex)
             {
                 status = "Failed";
-                details = $"The company force checkout job failed. Error: {ex.Message}";
+                jobFailure = $"The company force checkout job failed. Error: {ex.Message}";
                 _logger.LogError(ex, "Company force checkout job failed.");
                 throw;
             }
@@ -51,8 +52,15 @@ namespace ZyraHangfireService
                     var report = await BuildCheckoutSummaryAsync(startedAt, completedAt);
                     details = string.IsNullOrWhiteSpace(report) ? details : report;
 
-                    if (status == "Success" && details.Contains("Failed checkouts:", StringComparison.Ordinal))
+                    if (status == "Success" &&
+                        details.Contains("Failed checkouts:", StringComparison.Ordinal) &&
+                        !details.Contains("Failed checkouts: 0", StringComparison.Ordinal))
+                    {
                         status = "Partial";
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(jobFailure))
+                        details = $"{jobFailure}{Environment.NewLine}{Environment.NewLine}{details}";
 
                     await _notifications.NotifyAsync(
                         "CompanyForceCheckout",
@@ -72,19 +80,29 @@ namespace ZyraHangfireService
 
         private async Task<string> BuildCheckoutSummaryAsync(DateTime startedAt, DateTime completedAt)
         {
+            // Read the check-in history and checkout attempts for the reporting window.
+            // Only force-checkout attempts occurring during this job run are counted.
             var logs = await _dbContext.AttendanceLogs
                 .AsNoTracking()
                 .Where(x =>
                     x.CheckTime >= startedAt.AddDays(-1) &&
                     x.CheckTime <= completedAt &&
-                    x.AttendanceState == HRMConstants.ForceCheckoutState)
+                    (x.AttendanceState == HRMConstants.ForceCheckoutState ||
+                     x.AttendanceState == HRMConstants.CheckInState ||
+                     x.AttendanceState == HRMConstants.ExtraCheckInState ||
+                     x.AttendanceState == HRMConstants.ManualCheckInState))
                 .OrderBy(x => x.CheckTime)
                 .ToListAsync();
 
-            if (logs.Count == 0)
+            var attempts = logs
+                .Where(x => x.AttendanceState == HRMConstants.ForceCheckoutState &&
+                            x.CheckTime >= startedAt)
+                .ToList();
+
+            if (attempts.Count == 0)
                 return "No employee force-checkout attempts were recorded during this run. No successful employee checkout details are available.";
 
-            var biometricIds = logs
+            var biometricIds = attempts
                 .Select(x => x.EmployeeCode)
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct()
@@ -99,13 +117,13 @@ namespace ZyraHangfireService
                 .GroupBy(x => x.BiometricUserId!)
                 .ToDictionary(x => x.Key, x => x.First());
 
-            var successful = logs
+            var successful = attempts
                 .Where(x => x.IsProcessed && x.Status == "Success")
                 .GroupBy(x => x.EmployeeCode)
                 .Select(x => x.OrderByDescending(y => y.CheckTime).First())
                 .ToList();
 
-            var failed = logs
+            var failed = attempts
                 .Where(x => !x.IsProcessed || x.Status != "Success")
                 .GroupBy(x => x.EmployeeCode)
                 .Select(x => x.OrderByDescending(y => y.CheckTime).First())
