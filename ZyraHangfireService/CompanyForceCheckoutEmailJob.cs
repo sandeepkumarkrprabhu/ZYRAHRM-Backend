@@ -168,7 +168,7 @@ namespace ZyraHangfireService
                 lines.Add($"Biometric Device ID: {log.EmployeeCode}");
                 lines.Add($"Check-in Timestamp: {(previousCheckIn == null ? "Not available" : previousCheckIn.CheckTime.ToString("yyyy-MM-dd HH:mm:ss"))}");
                 lines.Add($"Checkout Timestamp: {log.CheckTime:yyyy-MM-dd HH:mm:ss}");
-                lines.Add($"Reason: {string.IsNullOrWhiteSpace(log.ErrorMessage) ? "Final company force checkout for employee outside active shift." : log.ErrorMessage}");
+                lines.Add($"Reason: {(string.IsNullOrWhiteSpace(log.ErrorMessage) ? "Final company force checkout for employee outside active shift." : log.ErrorMessage)}");
                 lines.Add(new string('-', 36));
             }
 
@@ -184,7 +184,7 @@ namespace ZyraHangfireService
                     lines.Add($"Employee Code: {employee?.HRMEmployeeCode ?? "Unknown"}");
                     lines.Add($"Biometric Device ID: {log.EmployeeCode}");
                     lines.Add($"Attempt Timestamp: {log.CheckTime:yyyy-MM-dd HH:mm:ss}");
-                    lines.Add($"Reason: {string.IsNullOrWhiteSpace(log.ErrorMessage) ? "Checkout API attempt failed." : log.ErrorMessage}");
+                    lines.Add($"Reason: {(string.IsNullOrWhiteSpace(log.ErrorMessage) ? "Checkout API attempt failed." : log.ErrorMessage)}");
                     lines.Add(new string('-', 36));
                 }
             }
