@@ -233,180 +233,184 @@ namespace Zyra.LantimeServiceApp.JobService
             DateTime policyAutoCheckoutTime,
             DateTime shiftStartTime,
             DateTime today,
-            PerformContext context, 
+            PerformContext context,
             DateTime executionTime)
         {
             if (string.IsNullOrWhiteSpace(employee.HRMEmployeeCode) ||
                 string.IsNullOrWhiteSpace(employee.BiometricUserId))
+            {
+                var reason = "Skipped: HRM employee code or biometric user ID is missing.";
+
+                _logger.LogWarning(
+                    "AutoCheckout | Employee={EmployeeName} | CheckIn=UNKNOWN | Checkout=NOT_CREATED | Status=Skipped | Reason={Reason}",
+                    employee.EmployeeName,
+                    reason);
+
+                context.WriteLine(
+                    ConsoleTextColor.Yellow,
+                    $"{employee.EmployeeName}: {reason}");
+
                 return;
+            }
 
-            // IMPORTANT:
-            // AUTO_CHECKOUT_TIME is the time this reconciliation job runs.
-            // It is NOT an employee checkout timestamp.
-            //
-            // The job uses that configured time only to decide when the
-            // reconciliation process is due. Actual attendance times come
-            // from the biometric device or from already synchronized logs.
+            // AUTO_CHECKOUT_TIME determines when this reconciliation job runs.
+            // It is not used as a fallback checkout timestamp. Company Force
+            // Checkout remains a separate job and policy.
 
-            // Get the latest successful check-in/check-out records for the
-            // employee. Include the previous calendar day so an overnight
-            // attendance session can remain open after midnight.
             var attendanceLogs = await _dbContext.AttendanceLogs
                 .AsNoTracking()
                 .Where(x =>
                     x.EmployeeCode == employee.BiometricUserId &&
                     x.CheckTime >= today.AddDays(-1) &&
-                    x.CheckTime <= DateTime.Now &&
+                    x.CheckTime <= executionTime &&
                     x.IsProcessed &&
                     x.Status == "Success")
                 .OrderByDescending(x => x.CheckTime)
                 .ToListAsync();
 
-            _logger.LogInformation(
-                "Processing auto checkout for {EmployeeName}: BiometricUserId={BiometricUserId}, " +
-                "AttendanceLogsCount={AttendanceLogsCount}, PolicyCheckout={PolicyCheckout}, ShiftStart={ShiftStart}",
-                employee.EmployeeName,
-                employee.BiometricUserId,
-                attendanceLogs.Count,
-                policyAutoCheckoutTime,
-                shiftStartTime);
-
             var latestCheckIn = attendanceLogs
-                .Where(x => x.AttendanceState == "checkin")
+                .Where(x =>
+                    x.AttendanceState == HRMConstants.CheckInState ||
+                    x.AttendanceState == HRMConstants.ManualCheckInState)
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
-            // The checkout session boundary is the AttendanceLogs check-in
-            // when available. Otherwise use the shift start time. This prevents
-            // a previous day's checkout from being treated as today's checkout.
-            var checkoutSearchFrom = latestCheckIn?.CheckTime ?? shiftStartTime;
+            // If there is no successful check-in attendance log, treat the
+            // session as a manual check-in. Since that manual check-in has no
+            // biometric timestamp in this log, use shift start only as the
+            // lower-bound reference for searching punches, never as checkout.
+            var isInferredManualCheckIn = latestCheckIn == null;
+            var checkInReferenceTime = latestCheckIn?.CheckTime ?? shiftStartTime;
 
             var latestCheckout = attendanceLogs
                 .Where(x =>
-                    (x.AttendanceState == "checkout" ||
-                     x.AttendanceState == "Auto checkout") &&
-                    x.CheckTime > checkoutSearchFrom)
+                    (x.AttendanceState == HRMConstants.CheckoutState ||
+                     x.AttendanceState == HRMConstants.AutoCheckoutState ||
+                     x.AttendanceState == HRMConstants.ForceCheckoutState) &&
+                    x.CheckTime > checkInReferenceTime)
                 .OrderByDescending(x => x.CheckTime)
                 .FirstOrDefault();
 
-            // A successful checkout closes the normal attendance session.
-            // However, a later biometric punch means the employee started
-            // working again. Reconcile that later work as a separate session
-            // instead of returning early.
-            if (latestCheckout != null)
-            {
-                var extraPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
-                    employee.BiometricUserId,
-                    latestCheckout.CheckTime,
-                    executionTime);
-
-                if (extraPunch.HasValue && extraPunch.Value > latestCheckout.CheckTime)
-                {
-                    await ProcessExtraWorkingTimeAsync(
-                        employee,
-                        latestCheckout.CheckTime,
-                        extraPunch.Value,
-                        context);
-
-                    return;
-                }
-
-                context.WriteLine(
-                    ConsoleTextColor.Gray,
-                    $"{employee.EmployeeName} already checked out at " +
-                    $"{latestCheckout.CheckTime:yyyy-MM-dd HH:mm:ss}; no later punch found.");
-
-                return;
-            }
-
-            // A completed normal attendance session is preserved.
-            // If a biometric punch happened after that checkout, reconcile
-            // that later work as a separate extra-working session.
-            if (latestCheckout != null)
-            {
-                var extraPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
-                    employee.BiometricUserId,
-                    latestCheckout.CheckTime,
-                    executionTime);
-
-                if (extraPunch.HasValue && extraPunch.Value > latestCheckout.CheckTime)
-                {
-                    await ProcessExtraWorkingTimeAsync(
-                        employee,
-                        latestCheckout.CheckTime,
-                        extraPunch.Value,
-                        context);
-
-                    return;
-                }
-
-                context.WriteLine(
-                    ConsoleTextColor.Gray,
-                    $"{employee.EmployeeName}: attendance already reconciled at " +
-                    $"{latestCheckout.CheckTime:yyyy-MM-dd HH:mm:ss}; no later biometric punch found.");
-
-                return;
-            }
-
-            // There is no synchronized checkout yet. Auto Checkout must NOT
-            // create an employee checkout at AUTO_CHECKOUT_TIME.
-            //
-            // If a biometric punch exists after the open check-in, that punch
-            // is actual attendance data and should normally be handled by the
-            // regular attendance-sync job. The final Company Force Checkout
-            // job remains responsible for unresolved open sessions.
-            var biometricSearchFrom = latestCheckIn?.CheckTime ?? shiftStartTime;
-
-            var latestPunch = latestCheckIn == null
-                ? null
-                : await _attendanceProvider.GetLatestPunchAfterAsync(
-                    employee.BiometricUserId,
-                    biometricSearchFrom,
-                    executionTime);
+            var checkInDescription = latestCheckIn?.CheckTime.ToString("yyyy-MM-dd HH:mm:ss")
+                ?? $"Manual (no successful check-in log; reference={checkInReferenceTime:yyyy-MM-dd HH:mm:ss})";
 
             _logger.LogInformation(
-                "AutoCheckout reconciliation for {EmployeeName}: BiometricUserId={BiometricUserId}, " +
-                "CheckIn={CheckIn}, ExistingCheckout={Checkout}, LatestBiometricPunch={LatestPunch}, " +
-                "JobExecutionTime={ExecutionTime}",
+                "AutoCheckout | Employee={EmployeeName} | BiometricUserId={BiometricUserId} | CheckIn={CheckIn} | CheckInType={CheckInType} | ExistingCheckout={ExistingCheckout} | PolicyCheckoutTrigger={PolicyCheckoutTrigger} | ExecutionTime={ExecutionTime}",
                 employee.EmployeeName,
                 employee.BiometricUserId,
-                latestCheckIn?.CheckTime,
+                checkInDescription,
+                isInferredManualCheckIn ? "Manual/inferred" : "Attendance log",
                 latestCheckout?.CheckTime,
-                latestPunch,
+                policyAutoCheckoutTime,
                 executionTime);
 
-            context.WriteLine(
-                ConsoleTextColor.Cyan,
-                $"{employee.EmployeeName}: CheckIn={latestCheckIn?.CheckTime:yyyy-MM-dd HH:mm:ss}, " +
-                $"ExistingCheckout={latestCheckout?.CheckTime:yyyy-MM-dd HH:mm:ss}, " +
-                $"LatestBiometricPunch={latestPunch?.ToString("yyyy-MM-dd HH:mm:ss") ?? "NONE"}, " +
-                $"JobExecutionTime={executionTime:yyyy-MM-dd HH:mm:ss}");
-
-            if (latestCheckIn == null)
+            if (latestCheckout != null)
             {
-                context.WriteLine(
-                    ConsoleTextColor.Gray,
-                    $"Auto checkout reconciliation skipped for {employee.EmployeeName}: no open attendance session found.");
+                var extraPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
+                    employee.BiometricUserId,
+                    latestCheckout.CheckTime,
+                    executionTime);
 
+                if (extraPunch.HasValue && extraPunch.Value > latestCheckout.CheckTime)
+                {
+                    await ProcessExtraWorkingTimeAsync(
+                        employee,
+                        latestCheckout.CheckTime,
+                        extraPunch.Value,
+                        context);
+
+                    return;
+                }
+
+                var checkoutText = latestCheckout.CheckTime.ToString("yyyy-MM-dd HH:mm:ss");
+                var message =
+                    $"{employee.EmployeeName} | CheckIn={checkInDescription} | " +
+                    $"Checkout={checkoutText} | Status=Skipped | " +
+                    "Reason=Already checked out; no later biometric punch found.";
+
+                _logger.LogInformation(
+                    "AutoCheckout | Employee={EmployeeName} | CheckIn={CheckIn} | Checkout={Checkout} | Status=Skipped | Reason=Already checked out; no later biometric punch found.",
+                    employee.EmployeeName,
+                    checkInDescription,
+                    latestCheckout.CheckTime);
+
+                context.WriteLine(ConsoleTextColor.Gray, message);
                 return;
             }
 
-            if (latestPunch.HasValue && latestPunch.Value > latestCheckIn.CheckTime)
+            // For inferred manual check-ins, shift start is the search
+            // reference because no successful check-in log provides a timestamp.
+            // It is not sent to HRM as a check-in or checkout timestamp.
+            var latestPunch = await _attendanceProvider.GetLatestPunchAfterAsync(
+                employee.BiometricUserId,
+                checkInReferenceTime,
+                executionTime);
+
+            if (!latestPunch.HasValue || latestPunch.Value <= checkInReferenceTime)
             {
+                const string reason = "Skipped - No valid biometric punch exists after check-in/reference time.";
+                _logger.LogInformation(
+                    "AutoCheckout | Employee={EmployeeName} | CheckIn={CheckIn} | CheckInType={CheckInType} | Checkout=NOT_CREATED | Status=Skipped | Reason={Reason}",
+                    employee.EmployeeName,
+                    checkInDescription,
+                    isInferredManualCheckIn ? "Manual/inferred" : "Attendance log",
+                    reason);
+
                 context.WriteLine(
                     ConsoleTextColor.Yellow,
-                    $"{employee.EmployeeName}: open attendance session has biometric punch " +
-                    $"{latestPunch.Value:yyyy-MM-dd HH:mm:ss}. No checkout is created by Auto Checkout; " +
-                    $"regular attendance sync should reconcile the biometric punch.");
+                    $"{employee.EmployeeName} | CheckIn={checkInDescription} | " +
+                    $"Checkout=NOT_CREATED | Status=Skipped | Reason={reason}");
 
                 return;
             }
 
+            var checkoutTime = latestPunch.Value;
+            var apiSuccess = await _apiService.SendAsync(
+                new AttendanceAPIDto
+                {
+                    employee_code = employee.HRMEmployeeCode,
+                    type = HRMConstants.CheckoutState,
+                    date_time = checkoutTime
+                });
+
+            // Record successful and failed attempts so the job has an audit
+            // trail. Failed attempts are not treated as completed checkouts.
+            _dbContext.AttendanceLogs.Add(new AttendanceLog
+            {
+                EmployeeCode = employee.BiometricUserId,
+                CheckTime = checkoutTime,
+                AttendanceState = HRMConstants.AutoCheckoutState,
+                IsProcessed = apiSuccess,
+                ProcessedAt = DateTime.Now,
+                Status = apiSuccess ? "Success" : "Failed",
+                ErrorMessage = apiSuccess
+                    ? "Auto Checkout used the latest biometric punch."
+                    : "Auto Checkout API failed while applying the latest biometric punch."
+            });
+
+            await _dbContext.SaveChangesAsync();
+
+            var resultStatus = apiSuccess ? "Checkout Created" : "Checkout Failed";
+            var checkInSourceDescription = isInferredManualCheckIn
+                ? "Manual/inferred; shift-start reference"
+                : "Attendance log";
+
+            var resultMessage =
+                $"{employee.EmployeeName} | CheckIn={checkInDescription} | " +
+                $"Checkout={checkoutTime:yyyy-MM-dd HH:mm:ss} | " +
+                $"Source=Latest biometric punch | CheckInType={checkInSourceDescription} | Status={resultStatus}";
+
+            _logger.LogInformation(
+                "AutoCheckout | Employee={EmployeeName} | CheckIn={CheckIn} | CheckInType={CheckInType} | Checkout={Checkout} | Source=Latest biometric punch | Status={Status}",
+                employee.EmployeeName,
+                checkInDescription,
+                checkInSourceDescription,
+                checkoutTime,
+                resultStatus);
+
             context.WriteLine(
-                ConsoleTextColor.Gray,
-                $"{employee.EmployeeName}: open attendance session remains unresolved at " +
-                $"{executionTime:yyyy-MM-dd HH:mm:ss}. No biometric checkout punch found. " +
-                $"Company Force Checkout remains the final safety net.");
+                apiSuccess ? ConsoleTextColor.Green : ConsoleTextColor.Red,
+                resultMessage);
         }
 
         private async Task ProcessExtraWorkingTimeAsync(
