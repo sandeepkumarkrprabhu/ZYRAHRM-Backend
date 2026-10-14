@@ -68,6 +68,14 @@ builder.Services.Configure<ExtraTimeEvaluationSettings>(
 builder.Services.Configure<HangfireSecurityOptions>(
     builder.Configuration.GetSection("HangfireSecurity"));
 
+builder.Services.AddOptions<SmtpOptions>()
+    .Bind(builder.Configuration.GetSection(SmtpOptions.SectionName))
+    .ValidateOnStart();
+
+builder.Services.AddOptions<AttendanceJobEmailOptions>()
+    .Bind(builder.Configuration.GetSection(AttendanceJobEmailOptions.SectionName))
+    .ValidateOnStart();
+
 //builder.Services.AddDbContext<AttendanceDbContext>(options =>
 //    options.UseSqlServer(builder.Configuration.GetConnectionString("AttendanceDb")));
 
@@ -103,9 +111,18 @@ builder.Services.AddScoped<IExtraTimeEvaluationService, ExtraTimeEvaluationServi
 builder.Services.AddScoped<IEmployeeSyncProcessor, EmployeeSyncProcessor>();
 builder.Services.AddScoped<IEmployeePunchProcessor, EmployeePunchProcessor>();
 
-builder.Services.AddScoped<ISyncAttendanceJob, JobSyncAttendanceJob>();
-builder.Services.AddScoped<IAutoCheckoutJob, JobAutoCheckoutJob>();
-builder.Services.AddScoped<ICompanyForceCheckoutJob, JobCompanyForceCheckout>();
+builder.Services.AddScoped<JobSyncAttendanceJob>();
+builder.Services.AddScoped<JobAutoCheckoutJob>();
+builder.Services.AddScoped<JobCompanyForceCheckout>();
+
+builder.Services.AddScoped<JobSyncAttendanceInvoker>();
+builder.Services.AddScoped<JobAutoCheckoutInvoker>();
+builder.Services.AddScoped<JobCompanyForceCheckoutInvoker>();
+
+builder.Services.AddScoped<ISyncAttendanceJob, AttendanceSyncEmailJob>();
+builder.Services.AddScoped<IAutoCheckoutJob, AutoCheckoutEmailJob>();
+builder.Services.AddScoped<ICompanyForceCheckoutJob, CompanyForceCheckoutEmailJob>();
+builder.Services.AddScoped<IAttendanceJobEmailNotificationService, AttendanceJobEmailNotificationService>();
 builder.Services.AddScoped<IDirectorAttendanceJob, JobDirectorAttendance>();
 builder.Services.AddScoped<IEmployeeSyncJob, JobEmployeeMasterSync>();
 builder.Services.AddScoped<IEmployeePunchSyncJob, JobEmployeeBioPunchTimeUpdate>();

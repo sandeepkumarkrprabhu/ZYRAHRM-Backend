@@ -7,6 +7,6 @@ namespace Zyra.LantimeServiceApp.Interfaces
     {
         Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default);
 
-        Task SendPasswordEmailAsync(string toEmail, string firstName, string plainPassword, IConfiguration _configuration);
+        Task SendPasswordEmailAsync(string toEmail, string firstName, string plainPassword, IConfiguration? configuration = null);
     }
 }
