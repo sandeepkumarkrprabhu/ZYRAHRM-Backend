@@ -52,8 +52,8 @@ namespace ZyraHangfireService
 
     public sealed class JobCompanyForceCheckoutInvoker
     {
-        private readonly ICompanyForceCheckoutJob _job;
-        public JobCompanyForceCheckoutInvoker(ICompanyForceCheckoutJob job) => _job = job;
+        private readonly Zyra.LantimeServiceApp.JobService.JobCompanyForceCheckout _job;
+        public JobCompanyForceCheckoutInvoker(Zyra.LantimeServiceApp.JobService.JobCompanyForceCheckout job) => _job = job;
         public Task ExecuteAsync(PerformContext context) => _job.Execute(context);
     }
 }
